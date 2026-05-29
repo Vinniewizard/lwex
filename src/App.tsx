@@ -41,7 +41,7 @@ function initializeAssetHistory(assets: Asset[]): Record<string, Tick[]> {
 export default function App() {
   // Theme state: support dark, light, auto modes
   const [themeMode, setThemeMode] = useState<'dark' | 'light' | 'auto'>(() => {
-    return (localStorage.getItem('maritech_theme_mode') as 'dark' | 'light' | 'auto') || 'auto';
+    return (localStorage.getItem('lwex_theme_mode') as 'dark' | 'light' | 'auto') || 'auto';
   });
 
   const [systemTheme, setSystemTheme] = useState<'dark' | 'light'>(() => {
@@ -75,12 +75,12 @@ export default function App() {
 
   // Account states
   const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('maritech_current_user');
+    const saved = localStorage.getItem('lwex_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
   const [account, setAccount] = useState<Account>(() => {
-    const saved = localStorage.getItem('maritech_account');
+    const saved = localStorage.getItem('lwex_account');
     if (saved) return JSON.parse(saved);
     return {
       mode: 'demo',
@@ -90,7 +90,7 @@ export default function App() {
     };
   });
   const [realAccountBalance, setRealAccountBalance] = useState<number>(() => {
-    return Number(localStorage.getItem('maritech_real_balance')) || 0.0;
+    return Number(localStorage.getItem('lwex_real_balance')) || 0.0;
   });
 
   // Layout Tab views
@@ -114,7 +114,7 @@ export default function App() {
   // Contracts & History Log portfolios
   const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryItem[]>(() => {
-    const saved = localStorage.getItem('maritech_history');
+    const saved = localStorage.getItem('lwex_history');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -135,7 +135,7 @@ export default function App() {
   });
 
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>(() => {
-    const saved = localStorage.getItem('maritech_price_alerts');
+    const saved = localStorage.getItem('lwex_price_alerts');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -153,14 +153,14 @@ export default function App() {
 
   // Persist state changes
   useEffect(() => {
-    localStorage.setItem('maritech_account', JSON.stringify(account));
-    localStorage.setItem('maritech_history', JSON.stringify(tradeHistory));
-    localStorage.setItem('maritech_real_balance', String(realAccountBalance));
-    localStorage.setItem('maritech_price_alerts', JSON.stringify(priceAlerts));
+    localStorage.setItem('lwex_account', JSON.stringify(account));
+    localStorage.setItem('lwex_history', JSON.stringify(tradeHistory));
+    localStorage.setItem('lwex_real_balance', String(realAccountBalance));
+    localStorage.setItem('lwex_price_alerts', JSON.stringify(priceAlerts));
     if (currentUser) {
-      localStorage.setItem('maritech_current_user', JSON.stringify(currentUser));
+      localStorage.setItem('lwex_current_user', JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem('maritech_current_user');
+      localStorage.removeItem('lwex_current_user');
     }
   }, [account, tradeHistory, realAccountBalance, currentUser, priceAlerts]);
 
@@ -370,7 +370,7 @@ export default function App() {
       nextMode = 'dark';
     }
     setThemeMode(nextMode);
-    localStorage.setItem('maritech_theme_mode', nextMode);
+    localStorage.setItem('lwex_theme_mode', nextMode);
     
     const modeLabel = nextMode === 'auto' ? 'Auto (OS Preference)' : nextMode.toUpperCase();
     triggerToast(`Theme preference updated to ${modeLabel}.`, true);
@@ -914,7 +914,7 @@ export default function App() {
       <footer className={`h-10 border-t text-[10px] font-mono flex items-center justify-between px-6 select-none shrink-0 transition-colors ${
         theme === 'dark' ? 'border-zinc-800 bg-zinc-950 text-zinc-400' : 'border-gray-100 bg-white text-gray-400'
       }`}>
-        <span>© 2026 MariTech Inc.</span>
+        <span>© 2026 LWEX Inc.</span>
       </footer>
     </div>
   );

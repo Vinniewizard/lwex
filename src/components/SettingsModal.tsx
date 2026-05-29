@@ -40,14 +40,14 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
     setIsEditingPhone(false);
     
     if (currentUser && onUpdateUser) {
-      const users = JSON.parse(localStorage.getItem('maritech_users') || '[]');
+      const users = JSON.parse(localStorage.getItem('lwex_users') || '[]');
       const updatedUsers = users.map((u: any) => {
           if (u.email === currentUser.email) {
               return { ...u, phone: phoneInput };
           }
           return u;
       });
-      localStorage.setItem('maritech_users', JSON.stringify(updatedUsers));
+      localStorage.setItem('lwex_users', JSON.stringify(updatedUsers));
       onUpdateUser({ ...currentUser, phone: phoneInput });
     }
   };
@@ -61,14 +61,14 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
     setIsEditingEmail(false);
     
     if (currentUser && onUpdateUser) {
-      const users = JSON.parse(localStorage.getItem('maritech_users') || '[]');
+      const users = JSON.parse(localStorage.getItem('lwex_users') || '[]');
       const updatedUsers = users.map((u: any) => {
           if (u.email === currentUser.email) {
               return { ...u, email: emailInput };
           }
           return u;
       });
-      localStorage.setItem('maritech_users', JSON.stringify(updatedUsers));
+      localStorage.setItem('lwex_users', JSON.stringify(updatedUsers));
       onUpdateUser({ ...currentUser, email: emailInput });
     }
   };
@@ -111,7 +111,7 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-sm">{currentUser?.email || 'MariTech Client'}</h3>
+                  <h3 className="font-bold text-sm">{currentUser?.email || 'LWEX Client'}</h3>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border ${
                     account.mode === 'real' 
                       ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
@@ -139,7 +139,7 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
                            type="email"
                            value={emailInput}
                            onChange={(e) => setEmailInput(e.target.value)}
-                           className={`rounded px-2 py-1 text-xs border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                           className={`rounded px-2 py-1 text-xs border focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
                              isDark ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-gray-50 border-gray-200 text-black'
                            }`}
                          />
@@ -183,7 +183,7 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
                            type="text"
                            value={phoneInput}
                            onChange={(e) => setPhoneInput(e.target.value)}
-                           className={`rounded px-2 py-1 text-xs border focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                           className={`rounded px-2 py-1 text-xs border focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
                              isDark ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-gray-50 border-gray-200 text-black'
                            }`}
                          />
@@ -288,7 +288,7 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
 
         <div className={`p-6 border-t ${isDark ? 'border-zinc-800' : 'border-gray-100'}`}>
           <p className="text-[10px] text-center text-gray-450 font-mono font-bold tracking-widest uppercase">
-            MariTech Secure Node v2.0.4.stable
+            LWEX Secure Node v2.0.4.stable
           </p>
         </div>
       </div>

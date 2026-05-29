@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CreditCard, ArrowDownCircle, ArrowUpRight, DollarSign, Wallet2, Check, RefreshCw, X, Shield } from 'lucide-react';
+import { CreditCard, ArrowDownCircle, ArrowUpRight, DollarSign, Wallet2, Check, RefreshCw, X, Shield, History } from 'lucide-react';
 import { Account } from '../types';
 
 interface CashierModalProps {
@@ -33,7 +33,7 @@ export default function CashierModal({
   currentUser,
   theme
 }: CashierModalProps) {
-  const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
+  const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
   const [amount, setAmount] = useState<number>(100);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('nowpayments');
   const [selectedCoin, setSelectedCoin] = useState('BTC');
@@ -51,6 +51,10 @@ export default function CashierModal({
   const [paymentStatus, setPaymentStatus] = useState<string>('');
   const [sandboxReason, setSandboxReason] = useState<string>('');
   const [isPolling, setIsPolling] = useState(false);
+  
+  const [depositHistory, setDepositHistory] = useState<any[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   const isKenya = currentUser?.country?.toLowerCase() === 'kenya';
   const isCryptoRoute = paymentMethod === 'nowpayments';
@@ -192,6 +196,27 @@ export default function CashierModal({
     };
   }, [isOpen, activeTab, paymentMethod, depositAddress?.paymentId, successMsg, currentUser, account.id, amount, onDeposit]);
 
+  useEffect(() => {
+    if (isOpen && activeTab === 'history') {
+      const fetchHistory = async () => {
+        setIsHistoryLoading(true);
+        try {
+          const userId = currentUser?.id || currentUser?.email || account.id;
+          const res = await fetch(`/api/cashier/history?userId=${userId}`);
+          const data = await res.json();
+          if (res.ok && data.success) {
+            setDepositHistory(data.history || []);
+          }
+        } catch (error) {
+          console.error('Failed to fetch deposit history:', error);
+        } finally {
+          setIsHistoryLoading(false);
+        }
+      };
+      fetchHistory();
+    }
+  }, [isOpen, activeTab, currentUser, account?.id]);
+
   if (!isOpen) return null;
 
   const selectPaymentMethod = (method: PaymentMethod) => {
@@ -261,7 +286,7 @@ export default function CashierModal({
 
           setReceiptFile(null);
           setMpesaMessage('');
-          setSuccessMsg('Deposit details submitted! MariTech admin will verify and credit your account within 30 minutes.');
+          setSuccessMsg('Deposit details submitted! LWEX admin will verify and credit your account within 30 minutes.');
           return;
         } else {
           throw new Error('M-Pesa withdrawals are currently processed manually. Please contact support with your M-Pesa details.');
@@ -335,7 +360,7 @@ export default function CashierModal({
         <div className="mb-3 sm:mb-5">
           <h2 className={`text-sm sm:text-base font-bold tracking-tight font-sans flex items-center gap-1 sm:gap-1.5 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
             <Wallet2 className={`h-4 w-4 sm:h-4.5 sm:w-4.5 ${theme === 'dark' ? 'text-white' : 'text-black'}`} />
-            <span className="truncate">MariTech Banking Ledger</span>
+            <span className="truncate">LWEX exchange</span>
           </h2>
           <span className="text-[8px] sm:text-[9px] text-gray-400 font-mono font-bold uppercase tracking-wide truncate block">
             WALLET: MT-{account.id.substring(0, 8).toUpperCase()}
@@ -345,7 +370,7 @@ export default function CashierModal({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-1 rounded-md bg-gray-100 p-1 mb-3 sm:mb-5 select-none border border-gray-200/50">
+        <div className="grid grid-cols-3 gap-1 rounded-md bg-gray-100 p-1 mb-3 sm:mb-5 select-none border border-gray-200/50">
           <button
             onClick={() => {
               setActiveTab('deposit');
@@ -372,9 +397,22 @@ export default function CashierModal({
             <ArrowUpRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             <span>Withdraw</span>
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('history');
+              setSuccessMsg('');
+              setApiError('');
+            }}
+            className={`flex items-center justify-center space-x-1 rounded py-2 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer ${
+              activeTab === 'history' ? (theme === 'dark' ? 'bg-slate-800 text-brand-primary shadow' : 'bg-white text-black shadow') : 'text-slate-400 hover:text-brand-primary'
+            }`}
+          >
+            <History className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            <span>History</span>
+          </button>
         </div>
 
-        {successMsg ? (
+        {successMsg && activeTab !== 'history' ? (
           <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 sm:p-5 text-center space-y-3 sm:space-y-4">
             <div className="mx-auto flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-green-100 text-green-600">
               <Check className="h-4 w-4 sm:h-5 sm:w-5 font-bold" />
@@ -387,6 +425,62 @@ export default function CashierModal({
               Continue Banking
             </button>
           </div>
+        ) : activeTab === 'history' ? (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Deposit History</h3>
+              <button
+                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded transition-colors ${theme === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                Sort: {sortOrder === 'desc' ? 'Most Recent' : 'Oldest'}
+              </button>
+            </div>
+            {isHistoryLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-yellow-500" />
+              </div>
+            ) : depositHistory.length === 0 ? (
+              <div className="text-center p-8 border rounded-lg border-dashed border-slate-700 bg-slate-900/50">
+                <p className="text-xs text-slate-400">No verified deposits found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <table className="w-full text-left text-xs min-w-[400px]">
+                  <thead className={`sticky top-0 ${theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-gray-100 text-gray-600'} text-[9px] uppercase tracking-wider z-10`}>
+                    <tr>
+                      <th className="px-3 py-2 font-bold rounded-tl-lg">Date</th>
+                      <th className="px-3 py-2 font-bold">Amount</th>
+                      <th className="px-3 py-2 font-bold">Asset</th>
+                      <th className="px-3 py-2 font-bold text-right rounded-tr-lg">Tx Hash</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50 font-mono text-[10px] sm:text-xs">
+                    {[...depositHistory].sort((a, b) => {
+                      const dA = new Date(a.date).getTime();
+                      const dB = new Date(b.date).getTime();
+                      return sortOrder === 'desc' ? dB - dA : dA - dB;
+                    }).map((d, i) => (
+                      <tr key={i} className={`group transition-colors ${theme === 'dark' ? 'hover:bg-slate-900/50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
+                          {new Date(d.date).toLocaleDateString()} <span className="text-[9px]">{new Date(d.date).toLocaleTimeString()}</span>
+                        </td>
+                        <td className="px-3 py-2.5 font-bold text-green-500">
+                          +${Number(d.amount).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2.5 font-bold text-yellow-500">
+                          {d.coin.toUpperCase()}
+                        </td>
+                        <td className="px-3 py-2.5 text-right opacity-50 group-hover:opacity-100 transition-opacity">
+                          <span className="truncate max-w-[80px] sm:max-w-[120px] inline-block">{d.txHash}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         ) : (
           <form id="cashier-action-form" onSubmit={handleSubmit} className="space-y-4">
             {/* Amount input block */}
@@ -394,7 +488,7 @@ export default function CashierModal({
               <label htmlFor="cashier-amount-input" className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase block tracking-wider">
                 USD Amount requested
               </label>
-              <div className={`flex rounded-md border items-center px-3 focus-within:border-cyan-500 min-h-12 sm:min-h-11 transition-colors ${
+              <div className={`flex rounded-md border items-center px-3 focus-within:border-yellow-500 min-h-12 sm:min-h-11 transition-colors ${
                 theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}>
                 <DollarSign className="h-4.5 w-4.5 text-slate-400 flex-shrink-0" />
@@ -412,7 +506,7 @@ export default function CashierModal({
               <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 font-bold">
                 <span>{activeTab === 'deposit' ? 'Minimum deposit is $1 USD' : 'Minimum withdrawal is $10 USD'}</span>
                 {activeTab === 'deposit' && depositAddress !== null && (
-                  <span className="text-cyan-500 animate-pulse font-mono">Amount locked for instructions</span>
+                  <span className="text-yellow-500 animate-pulse font-mono">Amount locked for instructions</span>
                 )}
               </div>
             </div>
@@ -428,7 +522,7 @@ export default function CashierModal({
                     onClick={() => handleAmountChange(val)}
                     className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
                       amount === val
-                        ? 'bg-cyan-500 text-slate-950 border-cyan-500'
+                        ? 'bg-yellow-500 text-slate-950 border-yellow-500'
                         : theme === 'dark'
                           ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -464,7 +558,7 @@ export default function CashierModal({
                     type="button"
                     onClick={() => selectPaymentMethod('nowpayments')}
                     className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
-                      paymentMethod === 'nowpayments' ? 'border-cyan-500 text-cyan-500 bg-cyan-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
+                      paymentMethod === 'nowpayments' ? 'border-yellow-500 text-yellow-500 bg-yellow-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
                     }`}
                   >
                     <RefreshCw className="h-5 w-5" />
@@ -489,8 +583,8 @@ export default function CashierModal({
                       onChange={(e) => handleCoinChange(e.target.value)}
                       className={`w-full rounded-lg border px-3 py-3.5 sm:py-3 text-xs font-bold outline-none cursor-pointer transition-colors ${
                         theme === 'dark' 
-                          ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-cyan-500' 
-                          : 'bg-white border-slate-250 text-slate-850 focus:border-cyan-500'
+                          ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-yellow-500' 
+                          : 'bg-white border-slate-250 text-slate-850 focus:border-yellow-500'
                       }`}
                     >
                       <option value="BTC">BTC (Bitcoin)</option>
@@ -506,8 +600,8 @@ export default function CashierModal({
                     </label>
                     <div className={`w-full rounded-lg border px-3 py-3.5 sm:py-3 text-xs font-black font-mono transition-colors ${
                       theme === 'dark' 
-                        ? 'bg-slate-900/40 border-slate-800 text-cyan-400' 
-                        : 'bg-slate-50 border-slate-200 text-cyan-600'
+                        ? 'bg-slate-900/40 border-slate-800 text-yellow-400' 
+                        : 'bg-slate-50 border-slate-200 text-yellow-600'
                     }`}>
                       {selectedNetwork} NETWORK
                     </div>
@@ -520,12 +614,12 @@ export default function CashierModal({
                 }`}>
                   <div className="flex items-center justify-between gap-2 border-b border-slate-800/10 dark:border-slate-800/50 pb-2">
                     <div className="flex items-center space-x-1.5">
-                      <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
+                      <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                         SECURE CRYPTO ENDPOINT
                       </span>
                     </div>
-                    <Shield className="h-4 w-4 text-cyan-500" />
+                    <Shield className="h-4 w-4 text-yellow-500" />
                   </div>
 
                   {sandboxReason && (
@@ -554,7 +648,7 @@ export default function CashierModal({
                             type="button"
                             disabled={isAddressLoading}
                             onClick={handleGenerateDepositAddress}
-                            className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 px-4 rounded-lg transition-all cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 px-4 rounded-lg transition-all cursor-pointer shadow-lg shadow-yellow-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                           >
                             {isAddressLoading ? (
                               <>
@@ -576,7 +670,7 @@ export default function CashierModal({
                               className="h-28 w-28 object-contain"
                               referrerPolicy="no-referrer"
                             />
-                            <span className="text-[8px] text-slate-500 font-black uppercase mt-1 tracking-wider font-mono">MARITECH SECURE TX</span>
+                            <span className="text-[8px] text-slate-500 font-black uppercase mt-1 tracking-wider font-mono">LWEX SECURE TX</span>
                           </div>
 
                           {/* Address details */}
@@ -640,12 +734,12 @@ export default function CashierModal({
                             )}
 
                             {/* Exact crypto amount instructions */}
-                            <div className="p-3 bg-cyan-950/20 rounded border border-cyan-500/20 space-y-1 text-center">
+                            <div className="p-3 bg-yellow-950/20 rounded border border-yellow-500/20 space-y-1 text-center">
                               <p className="text-[10px] text-slate-400 font-bold uppercase">
                                 EXACT AMOUNT TO TRANSFER
                               </p>
                               <div className="flex items-center justify-center space-x-2">
-                                <span className="text-base sm:text-lg font-black text-cyan-400 font-mono">
+                                <span className="text-base sm:text-lg font-black text-yellow-400 font-mono">
                                   {depositAddress.amount} {selectedCoin}
                                 </span>
                                 <button
@@ -658,7 +752,7 @@ export default function CashierModal({
                                       setTimeout(() => setSuccessMsg(''), 2000);
                                     }
                                   }}
-                                  className="text-slate-400 hover:text-cyan-400 transition-all cursor-pointer p-0.5"
+                                  className="text-slate-400 hover:text-yellow-400 transition-all cursor-pointer p-0.5"
                                   title="Copy Amount"
                                 >
                                   <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -680,14 +774,14 @@ export default function CashierModal({
                           }`}>
                             <div className="flex items-center space-x-2.5">
                               <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
                               </span>
                               <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
                                 {isPolling ? 'Checking transfer on blockchain...' : 'Monitoring incoming payment...'}
                               </span>
                             </div>
-                            <span className="font-mono text-[9px] text-cyan-500 font-extrabold uppercase tracking-wide animate-pulse">
+                            <span className="font-mono text-[9px] text-yellow-500 font-extrabold uppercase tracking-wide animate-pulse">
                               Auto-verifying (10s)
                             </span>
                           </div>
@@ -695,7 +789,7 @@ export default function CashierModal({
                           {/* Info footer */}
                           <div className="space-y-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                             <p>
-                              Send funds using any cryptocurrency exchange or personal wallet. Direct account settings and billing links can be checked on <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-cyan-500 underline hover:text-cyan-400 font-bold">account.nowpayments.io</a>.
+                              Send funds using any cryptocurrency exchange or personal wallet. Direct account settings and billing links can be checked on <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-yellow-500 underline hover:text-yellow-400 font-bold">account.nowpayments.io</a>.
                             </p>
                             <p className="font-bold text-slate-600 dark:text-slate-300">
                               Once successfully sent, click the 'Verify Blockchain Deposit' button below to automatically check confirms and credit your exchange balance immediately!
@@ -731,7 +825,7 @@ export default function CashierModal({
                             value={targetAddress}
                             onChange={(e) => setTargetAddress(e.target.value)}
                             placeholder={`Paste your secure ${selectedCoin} (${selectedNetwork}) address`}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-cyan-500 outline-none transition-all"
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-yellow-500 outline-none transition-all"
                           />
                         </div>
 
@@ -745,15 +839,15 @@ export default function CashierModal({
                             value={addressTag}
                             onChange={(e) => setAddressTag(e.target.value)}
                             placeholder="Destination tag if sending to exchange"
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-cyan-500 outline-none transition-all"
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-yellow-500 outline-none transition-all"
                           />
                         </div>
 
-                        <div className="p-3 bg-cyan-950/20 border border-cyan-500/10 rounded text-[10px] text-slate-400 leading-relaxed space-y-1.5 font-medium">
+                        <div className="p-3 bg-yellow-950/20 border border-yellow-500/10 rounded text-[10px] text-slate-400 leading-relaxed space-y-1.5 font-medium">
                           <p>
                             Withdrawals are processed via safe direct API payloads. Always ensure your destination wallet supports the <strong className="text-white font-mono">{selectedNetwork} Network</strong> to prevent loss of digital assets.
                           </p>
-                          <p className="font-bold text-cyan-400">
+                          <p className="font-bold text-yellow-400">
                              Minimum withdrawal: $10.00 USD.
                           </p>
                         </div>
@@ -838,7 +932,7 @@ export default function CashierModal({
               className={`flex w-full items-center justify-center space-x-2 rounded py-4 sm:py-3.5 font-bold transition-all text-xs sm:text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 select-none ${
                 paymentMethod === 'paybill' 
                   ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : 'bg-cyan-500 text-slate-950 hover:bg-cyan-600 shadow-lg shadow-cyan-500/10'
+                  : 'bg-yellow-500 text-slate-950 hover:bg-yellow-600 shadow-lg shadow-yellow-500/10'
               }`}
             >
               {isProcessing || isAddressLoading ? (

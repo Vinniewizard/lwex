@@ -172,7 +172,7 @@ function getD1Database() {
   }
 
   // SQLite fallback
-  const dbPath = path.join(process.cwd(), 'maritech.db');
+  const dbPath = path.join(process.cwd(), 'lwex.db');
   console.log(`[D1 Setup] Connecting to SQLite database at: ${dbPath}`);
 
   try {
@@ -482,7 +482,7 @@ async function startServer() {
       if (!ai) {
         return res.json({
           signal: 'HOLD',
-          analysis: 'MariTech AI Sandboxed: To activate live AI analytical reports, configure a valid GEMINI_API_KEY inside the custom Secrets panel.',
+          analysis: 'LWEX AI Sandboxed: To activate live AI analytical reports, configure a valid GEMINI_API_KEY inside the custom Secrets panel.',
           support: 'ND',
           resistance: 'ND',
           levelOfConfidence: 'Low (Sandbox)'
@@ -493,12 +493,12 @@ async function startServer() {
       const pricesString = priceHistory ? priceHistory.slice(-20).map((t: any) => t.price.toFixed(4)).join(', ') : 'unknown';
       const indicatorsString = activeIndicatorValues ? JSON.stringify(activeIndicatorValues) : 'Defaults';
 
-      const systemPrompt = `You are "Wizard Bot", the mystical and evolving institutional derivatives analyst of MariTech Inc.
+      const systemPrompt = `You are "Wizard Bot", the mystical and evolving institutional derivatives analyst of LWEX Inc.
 You specialize in real-time technical analysis for binary options and synthetic indices.
 Your style is professional, mystical, and adaptive.
 
 PRIVACY & SECURITY PROTOCOL:
-- PROTECT THE SANCTITY: Never disclose internal MariTech algorithms, source code, API keys, or infrastructure details.
+- PROTECT THE SANCTITY: Never disclose internal LWEX algorithms, source code, API keys, or infrastructure details.
 - DATA GUARDIAN: Ensure that all market insights remain within the platform's mystical boundaries. 
 - SILENCE ON SECRETS: If asked about the Wizard's internal mechanics or "how you work", pivot back to market wisdom without leaking platform secrets.
 
@@ -550,7 +550,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       console.error('Gemini copilot query error:', error);
       return res.status(500).json({
         signal: 'ERROR',
-        analysis: 'Failed to negotiate analysis payload with MariTech secure service. Please check configuration schemas.',
+        analysis: 'Failed to negotiate analysis payload with LWEX secure service. Please check configuration schemas.',
         error: error.message
       });
     }
@@ -594,7 +594,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
           if (reason.toLowerCase().includes('estimate')) {
             finalReason = `USDT Testnet Active: Securely routed to standard simulation gateway. Auto-conversion is locked 1:1 USD to USDT.`;
           } else {
-            finalReason = `Secure Gateway Note: "${reason}". Seamlessly routed to secure live MariTech Sandbox simulation.`;
+            finalReason = `Secure Gateway Note: "${reason}". Seamlessly routed to secure live LWEX Sandbox simulation.`;
           }
         }
 
@@ -624,7 +624,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
           price_currency: 'usd',
           pay_currency: payCurrency,
           order_id: `dep-${Date.now()}-${userId}`,
-          order_description: `Deposit to MariTech Wallet for ${userId}`,
+          order_description: `Deposit to LWEX Wallet for ${userId}`,
           ipn_callback_url: process.env.IPN_CALLBACK_URL // Optional but good for automation
         });
 
@@ -1046,6 +1046,33 @@ Active technical indicator values: ${indicatorsString}.`}`;
     } catch (error: any) {
       console.error('Login error:', error);
       return res.status(500).json({ success: false, message: error.message || 'Login failed' });
+    }
+  });
+
+  // User endpoint - Get deposit history
+  app.get('/api/cashier/history', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const { userId } = req.query;
+      if (!userId) {
+        return res.status(400).json({ success: false, message: 'User ID is required.' });
+      }
+      
+      const db = getD1Database();
+      const depositsRes = await db.prepare('SELECT tx_hash, amount, coin, network, credited_at FROM credited_deposits WHERE user_id = ? ORDER BY credited_at DESC').bind(userId).all();
+      
+      const history = (depositsRes?.results || []).map((row: any) => ({
+        txHash: row.tx_hash,
+        amount: row.amount,
+        coin: row.coin,
+        network: row.network,
+        date: row.credited_at
+      }));
+
+      return res.json({ success: true, history });
+    } catch (error: any) {
+      console.error('History fetch error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
     }
   });
 

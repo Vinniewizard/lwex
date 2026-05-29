@@ -181,7 +181,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                 onClick={() => setLoginMethod('creds')}
                 className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                   loginMethod === 'creds' 
-                    ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                    ? 'bg-yellow-500 text-slate-950 font-extrabold shadow-sm'
                     : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -192,7 +192,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                 onClick={() => setLoginMethod('key')}
                 className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                   loginMethod === 'key' 
-                    ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                    ? 'bg-yellow-500 text-slate-950 font-extrabold shadow-sm'
                     : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -215,8 +215,8 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                       required
                       className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
                         theme === 'dark'
-                          ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
-                          : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-yellow-500'
+                          : 'bg-white border-gray-200 text-black focus:border-yellow-500'
                       }`}
                     />
                   </div>
@@ -232,8 +232,8 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                       required
                       className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
                         theme === 'dark'
-                          ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
-                          : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-yellow-500'
+                          : 'bg-white border-gray-200 text-black focus:border-yellow-500'
                       }`}
                     />
                   </div>
@@ -251,8 +251,8 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                     required
                     className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
                       theme === 'dark'
-                        ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
-                        : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-yellow-500'
+                        : 'bg-white border-gray-200 text-black focus:border-yellow-500'
                     }`}
                   />
                 </div>
@@ -261,7 +261,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 rounded transition-all disabled:opacity-50 mt-4 cursor-pointer"
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 rounded transition-all disabled:opacity-50 mt-4 cursor-pointer"
               >
                 {loading ? 'Authenticating...' : 'Access Admin Panel'}
               </button>
@@ -281,7 +281,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase transition-all rounded ${
                     activeTab === tab.id
-                      ? 'bg-cyan-500 text-white shadow-lg'
+                      ? 'bg-yellow-500 text-white shadow-lg'
                       : 'text-slate-500 hover:text-white hover:bg-slate-900'
                   }`}
                 >
@@ -303,7 +303,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                         <p className="text-xs text-gray-500 font-bold uppercase">Total Users</p>
                         <p className="text-2xl font-bold">{stats.totalUsers}</p>
                       </div>
-                      <Users className="h-6 w-6 text-cyan-500" />
+                      <Users className="h-6 w-6 text-yellow-500" />
                     </div>
                   </div>
 
@@ -343,7 +343,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                         <p className="text-xs text-gray-500 font-bold uppercase">Top Deposit</p>
                         <p className="text-2xl font-bold">${stats.topDepositAmount.toFixed(2)}</p>
                       </div>
-                      <DollarSign className="h-6 w-6 text-cyan-500" />
+                      <DollarSign className="h-6 w-6 text-yellow-500" />
                     </div>
                   </div>
                 </div>
@@ -446,7 +446,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
               {activeTab === 'game' && (
                 <div className="max-w-2xl space-y-6">
                   <div className="border border-slate-800 rounded-lg p-6 bg-slate-900 shadow-xl">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-cyan-500">
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-yellow-500">
                       <TrendingUp className="h-5 w-5" />
                       Global Market Control
                     </h3>
@@ -466,7 +466,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                           step="0.001"
                           value={gameSettings.globalTrendBias}
                           onChange={(e) => setGameSettings({...gameSettings, globalTrendBias: parseFloat(e.target.value)})}
-                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-yellow-500"
                         />
                         <div className="flex justify-between text-[8px] text-slate-600 font-bold uppercase">
                           <span>Heavy Sell</span>
@@ -496,7 +496,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                         <select
                           value={gameSettings.forceOutcome || ''}
                           onChange={(e) => setGameSettings({...gameSettings, forceOutcome: e.target.value as any})}
-                          className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs font-bold text-white outline-none focus:border-cyan-500 transition-all"
+                          className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs font-bold text-white outline-none focus:border-yellow-500 transition-all"
                         >
                           <option value="">No Override (Natural Market)</option>
                           <option value="win">Force WIN for all users</option>
@@ -510,7 +510,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                       <button
                         type="submit"
                         disabled={isGameLoading}
-                        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg text-xs uppercase tracking-widest shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
+                        className="w-full bg-gradient-to-r from-yellow-600 to-yellow-600 hover:from-yellow-500 hover:to-yellow-500 text-white font-bold py-3 rounded-lg text-xs uppercase tracking-widest shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
                       >
                         {isGameLoading ? 'Updating System...' : 'Deploy Global Market Settings'}
                       </button>

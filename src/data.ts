@@ -3,7 +3,7 @@ import { Asset } from './types';
 export const ASSETSList: Asset[] = [
   {
     id: 'R_10',
-    name: 'MariTech Flow',
+    name: 'LWEX Flow',
     symbol: 'MFLOW',
     type: 'syndicate',
     price: 155.45,
@@ -11,7 +11,7 @@ export const ASSETSList: Asset[] = [
     volatility: 0.22,
     trendBias: 0.001,
     decimals: 2,
-    description: 'A custom synthetic index simulating the steady electronic flow of MariTech systems with 10% constant variation.'
+    description: 'A custom synthetic index simulating the steady electronic flow of LWEX systems with 10% constant variation.'
   },
   {
     id: 'R_25',
@@ -47,7 +47,7 @@ export const ASSETSList: Asset[] = [
     volatility: 38.5,
     trendBias: 0.0005,
     decimals: 4,
-    description: 'Highly dynamic and aggressive price oscillations as predicted by the MariTech Oracle system.'
+    description: 'Highly dynamic and aggressive price oscillations as predicted by the LWEX Oracle system.'
   },
   {
     id: 'R_100',

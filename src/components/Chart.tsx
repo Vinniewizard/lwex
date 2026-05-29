@@ -692,7 +692,7 @@ export default function Chart({
               onClick={() => handleToggleLocalChartType('line')}
               className={`rounded p-1 cursor-pointer transition-all ${
                 localChartType === 'line'
-                  ? isDark ? 'bg-teal-500 text-slate-950 font-bold' : 'bg-black text-white'
+                  ? isDark ? 'bg-yellow-500 text-slate-950 font-bold' : 'bg-black text-white'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/30' : 'text-gray-400 hover:text-black'
               }`}
               title="Line Chart"
@@ -703,7 +703,7 @@ export default function Chart({
               onClick={() => handleToggleLocalChartType('candles')}
               className={`rounded p-1 cursor-pointer transition-all ${
                 localChartType === 'candles'
-                  ? isDark ? 'bg-teal-500 text-slate-950 font-bold' : 'bg-black text-white'
+                  ? isDark ? 'bg-yellow-500 text-slate-950 font-bold' : 'bg-black text-white'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/30' : 'text-gray-400 hover:text-black'
               }`}
               title="Candlestick Chart"
@@ -718,7 +718,7 @@ export default function Chart({
               onClick={() => setShowIndicatorsPanel(!showIndicatorsPanel)}
               className={`flex items-center space-x-1 rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer transition-all border ${
                 showIndicatorsPanel || Object.values(indicatorConfig).some(i => i.enabled)
-                  ? isDark ? 'bg-teal-500/20 text-teal-300 border-teal-500/30' : 'bg-purple-500/10 text-purple-600 border-purple-200'
+                  ? isDark ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' : 'bg-purple-500/10 text-purple-600 border-purple-200'
                   : isDark ? 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white' : 'bg-white text-gray-500 border-gray-200 hover:text-black'
               }`}
             >

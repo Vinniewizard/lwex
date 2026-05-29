@@ -54,8 +54,8 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
       .then((data) => {
         setSuccessMsg(data.message || 'Account created successfully!');
         setIsLoading(false);
-        localStorage.setItem('maritech_current_user', JSON.stringify(data.user));
-        localStorage.setItem('maritech_token', data.token);
+        localStorage.setItem('lwex_current_user', JSON.stringify(data.user));
+        localStorage.setItem('lwex_token', data.token);
         setTimeout(() => {
           onSuccess(data.user);
           onClose();
@@ -82,8 +82,8 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
       })
       .then((data) => {
         setIsLoading(false);
-        localStorage.setItem('maritech_current_user', JSON.stringify(data.user));
-        localStorage.setItem('maritech_token', data.token);
+        localStorage.setItem('lwex_current_user', JSON.stringify(data.user));
+        localStorage.setItem('lwex_token', data.token);
         onSuccess(data.user);
         onClose();
       })
@@ -133,7 +133,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
         
         {/* Header Graphic/Gradient */}
         <div className="relative h-32 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500 via-violet-500 to-fuchsia-500 opacity-90" />
+          <div className="absolute inset-0 bg-gradient-to-br from-yellow-500 via-violet-500 to-fuchsia-500 opacity-90" />
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-30 mix-blend-overlay" />
           
           <button 
@@ -151,7 +151,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
             </h2>
             <p className="text-white/80 text-sm mt-1">
               {view === 'login' && 'Enter your details to access your portfolio.'}
-              {view === 'register' && 'Join MariTech and start trading today.'}
+              {view === 'register' && 'Join LWEX and start trading today.'}
               {view === 'forgot_password' && "We'll send you instructions to reset it."}
             </p>
           </div>
@@ -186,10 +186,10 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`block w-full pl-10 pr-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                    className={`block w-full pl-10 pr-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-yellow-500 focus:outline-none ${
                       isDark 
-                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' 
-                        : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-500'
+                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                     } border`}
                     placeholder="you@example.com"
                   />
@@ -211,10 +211,10 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className={`block w-full pl-10 pr-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                      className={`block w-full pl-10 pr-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-yellow-500 focus:outline-none ${
                         isDark 
-                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' 
-                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-500'
+                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
+                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                       } border`}
                       placeholder="+1 (555) 000-0000"
                     />
@@ -231,10 +231,10 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                   <select
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    className={`block w-full px-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                    className={`block w-full px-3 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-yellow-500 focus:outline-none ${
                       isDark 
-                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' 
-                        : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-500'
+                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                     } border cursor-pointer`}
                   >
                     <option value="Kenya">Kenya</option>
@@ -261,7 +261,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                       <button 
                         type="button"
                         onClick={() => switchView('forgot_password')}
-                        className="text-xs font-medium text-indigo-500 hover:text-indigo-400 transition-colors"
+                        className="text-xs font-medium text-yellow-500 hover:text-yellow-400 transition-colors"
                       >
                         Forgot password?
                       </button>
@@ -276,10 +276,10 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={`block w-full pl-10 pr-10 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                      className={`block w-full pl-10 pr-10 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-yellow-500 focus:outline-none ${
                         isDark 
-                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' 
-                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-500'
+                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
+                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                       } border`}
                       placeholder="••••••••"
                     />
@@ -309,10 +309,10 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={`block w-full pl-10 pr-10 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                      className={`block w-full pl-10 pr-10 py-2.5 rounded-lg text-sm transition-all focus:ring-2 focus:ring-yellow-500 focus:outline-none ${
                         isDark 
-                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' 
-                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-500'
+                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
+                          : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                       } border`}
                       placeholder="••••••••"
                     />
@@ -324,7 +324,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
               <button
                 type="submit"
                 disabled={isLoading || (view === 'register' && password !== confirmPassword && confirmPassword !== '')}
-                className="w-full mt-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/30"
+                className="w-full mt-6 bg-gradient-to-r from-yellow-500 to-purple-600 hover:from-yellow-600 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/30"
               >
                 {isLoading ? (
                   <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -348,7 +348,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                     <button 
                       type="button" 
                       onClick={() => switchView('register')}
-                      className="font-bold text-indigo-500 hover:text-indigo-400 transition-colors"
+                      className="font-bold text-yellow-500 hover:text-yellow-400 transition-colors"
                     >
                       Sign up now
                     </button>
@@ -360,7 +360,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                     <button 
                       type="button" 
                       onClick={() => switchView('login')}
-                      className="font-bold text-indigo-500 hover:text-indigo-400 transition-colors"
+                      className="font-bold text-yellow-500 hover:text-yellow-400 transition-colors"
                     >
                       Sign in
                     </button>
@@ -370,7 +370,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                   <button 
                     type="button" 
                     onClick={() => switchView('login')}
-                    className="font-bold text-indigo-500 hover:text-indigo-400 transition-colors"
+                    className="font-bold text-yellow-500 hover:text-yellow-400 transition-colors"
                   >
                     Back to Sign In
                   </button>

@@ -130,7 +130,7 @@ export default function TradeControls({
         >
           <div className="flex items-center space-x-2">
             <span className={`h-2 w-2 rounded-full ${
-              selectedAsset.type === 'syndicate' ? 'bg-red-500' : selectedAsset.type === 'forex' ? 'bg-blue-500' : 'bg-yellow-500'
+              selectedAsset.type === 'syndicate' ? 'bg-red-500' : selectedAsset.type === 'forex' ? 'bg-yellow-500' : 'bg-yellow-500'
             }`} />
             <span className="truncate">{selectedAsset.name}</span>
           </div>
@@ -146,7 +146,7 @@ export default function TradeControls({
               placeholder="Search markets..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-500 mb-2 border ${
+              className={`w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-500 mb-2 border ${
                 isDark ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500' : 'bg-gray-50 border-gray-200 text-black placeholder-gray-400'
               }`}
             />
@@ -157,7 +157,7 @@ export default function TradeControls({
                   onClick={() => handleAssetSelect(asset)}
                   className={`flex items-center justify-between rounded p-2 text-xs cursor-pointer transition-all ${
                     selectedAsset.id === asset.id
-                      ? isDark ? 'bg-teal-500 text-slate-950 font-bold shadow-[0_0_12px_rgba(20,184,166,0.3)]' : 'bg-black text-white font-bold'
+                      ? isDark ? 'bg-yellow-500 text-slate-950 font-bold shadow-[0_0_12px_rgba(20,184,166,0.3)]' : 'bg-black text-white font-bold'
                       : isDark ? 'hover:bg-slate-900 text-slate-300' : 'hover:bg-gray-50 text-gray-800'
                   }`}
                 >
@@ -192,7 +192,7 @@ export default function TradeControls({
               onClick={() => setContractType(type)}
               className={`rounded py-1.5 text-[9px] font-bold uppercase transition-all tracking-tight cursor-pointer ${
                 contractType === type
-                  ? isDark ? 'bg-teal-500 text-slate-950 shadow-[0_0_10px_rgba(20,184,166,0.3)] font-black' : 'bg-white text-black shadow'
+                  ? isDark ? 'bg-yellow-500 text-slate-950 shadow-[0_0_10px_rgba(20,184,166,0.3)] font-black' : 'bg-white text-black shadow'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/30' : 'text-gray-450 hover:text-black hover:bg-white/20'
               }`}
             >
@@ -215,7 +215,7 @@ export default function TradeControls({
                 onClick={() => handleSelectTargetDigit(d)}
                 className={`rounded py-1.5 text-[10px] font-mono font-bold border transition-all cursor-pointer ${
                   targetDigit === d
-                    ? isDark ? 'bg-teal-500 border-teal-500 text-slate-950 shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-black border-black text-white'
+                    ? isDark ? 'bg-yellow-500 border-yellow-500 text-slate-950 shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-black border-black text-white'
                     : isDark ? 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-850' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
                 }`}
               >
@@ -247,7 +247,7 @@ export default function TradeControls({
               onClick={() => setDurationUnit(unit)}
               className={`rounded py-1 text-[9px] font-bold uppercase tracking-tight cursor-pointer ${
                 durationUnit === unit
-                  ? isDark ? 'bg-teal-500 text-slate-950 font-black shadow-sm' : 'bg-black text-white font-extrabold shadow-sm'
+                  ? isDark ? 'bg-yellow-500 text-slate-950 font-black shadow-sm' : 'bg-black text-white font-extrabold shadow-sm'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/40' : 'text-gray-410 hover:text-black hover:bg-white/10'
               }`}
             >
@@ -302,7 +302,7 @@ export default function TradeControls({
               step={selectedAsset.decimals > 2 ? 0.0001 : 0.1}
               value={barrierOffset}
               onChange={(e) => setBarrierOffset(Math.max(0, parseFloat(e.target.value) || 0))}
-              className={`w-full bg-transparent py-2.5 px-3 font-mono text-xs font-bold focus:outline-none text-right ${isDark ? 'text-teal-400 font-bold' : 'text-purple-650'}`}
+              className={`w-full bg-transparent py-2.5 px-3 font-mono text-xs font-bold focus:outline-none text-right ${isDark ? 'text-yellow-400 font-bold' : 'text-purple-650'}`}
             />
           </div>
         </div>
@@ -335,7 +335,7 @@ export default function TradeControls({
               onClick={() => handlePresetStake(preset)}
               className={`rounded py-1 text-[9px] font-bold hover:bg-black hover:text-white transition-all cursor-pointer border ${
                 stake === preset
-                  ? isDark ? 'bg-teal-500 border-teal-500 text-slate-950 font-extrabold shadow-[0_0_8px_rgba(20,184,166,0.25)]' : 'bg-black border-black text-white font-extrabold'
+                  ? isDark ? 'bg-yellow-500 border-yellow-500 text-slate-950 font-extrabold shadow-[0_0_8px_rgba(20,184,166,0.25)]' : 'bg-black border-black text-white font-extrabold'
                   : isDark ? 'border-slate-800 bg-slate-950/80 text-slate-400 hover:bg-slate-900 hover:text-white' : 'border-gray-200 bg-gray-50/50 text-gray-450 hover:bg-gray-100'
               }`}
             >
@@ -413,7 +413,7 @@ export default function TradeControls({
             {/* BUY HIGHER BUTTON */}
             <button
               onClick={() => initiatePurchase('higher')}
-              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-slate-900 hover:bg-black text-white'}`}
+              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-slate-900 hover:bg-black text-white'}`}
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">
@@ -449,7 +449,7 @@ export default function TradeControls({
             {/* BUY TOUCH BUTTON */}
             <button
               onClick={() => initiatePurchase('touch')}
-              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-slate-900 hover:bg-black text-white'}`}
+              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-slate-900 hover:bg-black text-white'}`}
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">
@@ -484,7 +484,7 @@ export default function TradeControls({
             {/* BUY OVER BUTTON */}
             <button
               onClick={() => initiatePurchase('over')}
-              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black shadow-[0_0_12px_rgba(20,184,166,0.35)]' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">

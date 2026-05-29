@@ -11,7 +11,7 @@ import {
   Wallet,
   Settings,
   Lock,
-  Activity,
+  Box,
   UserCheck
 } from 'lucide-react';
 import { Account } from '../types';
@@ -81,18 +81,17 @@ export default function Header({
         >
           <div className={`w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
             isDark 
-              ? 'bg-gradient-to-tr from-teal-500 to-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(20,184,166,0.3)] group-hover:scale-105' 
-              : 'bg-gradient-to-tr from-slate-900 to-slate-800 text-white shadow-md'
+              ? 'bg-gradient-to-tr from-yellow-500 to-yellow-400 text-slate-950 shadow-[0_0_12px_rgba(20,184,166,0.3)] group-hover:scale-105' 
+              : 'bg-gradient-to-tr from-yellow-500 to-yellow-400 text-white shadow-md'
           }`}>
-            <Activity className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
+            <Box className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div className="flex flex-col">
-            <span className={`text-xs md:text-sm font-black tracking-wider uppercase leading-none font-sans ${
+            <span className={`text-[13px] md:text-base font-black tracking-normal leading-none font-sans ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}>
-              MARITECH <span className={isDark ? 'text-teal-400 font-semibold' : 'text-indigo-600 font-semibold'}>INC.</span>
+              LWEX <span className={isDark ? 'text-yellow-400 font-semibold' : 'text-yellow-600 font-semibold'}>exchange</span>
             </span>
-            <span className="text-[7px] md:text-[8px] font-bold text-slate-400 tracking-widest mt-0.5">FINANCIAL GATEWAY</span>
           </div>
         </div>
 
@@ -109,13 +108,13 @@ export default function Header({
             className={`relative px-2 py-1 md:px-3 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
               account.mode === 'demo'
                 ? isDark
-                  ? 'bg-teal-500/15 text-teal-400 shadow-[0_0_10px_rgba(20,184,166,0.15)] border border-teal-500/25'
+                  ? 'bg-yellow-500/15 text-yellow-400 shadow-[0_0_10px_rgba(20,184,166,0.15)] border border-yellow-500/25'
                   : 'bg-white text-emerald-600 shadow-sm border border-emerald-200'
                 : 'text-slate-400 hover:text-slate-350 border border-transparent font-medium'
             }`}
           >
             <span className={`h-1.5 w-1.5 rounded-full transition-all flex-shrink-0 ${
-              account.mode === 'demo' ? 'bg-teal-400 animate-pulse shadow-[0_0_6px_#2dd4bf]' : 'bg-slate-500'
+              account.mode === 'demo' ? 'bg-yellow-400 animate-pulse shadow-[0_0_6px_#2dd4bf]' : 'bg-slate-500'
             }`} />
             <span>Demo</span>
 
@@ -126,7 +125,7 @@ export default function Header({
                   e.stopPropagation();
                   onResetDemo();
                 }}
-                className="ml-1 rounded-full p-0.5 transition-all text-teal-400 hover:bg-teal-900/30 hover:text-white"
+                className="ml-1 rounded-full p-0.5 transition-all text-yellow-400 hover:bg-yellow-900/30 hover:text-white"
                 title="Replenish Demo Funds to $10,000"
               >
                 <RefreshCw className="h-2.5 w-2.5" />
@@ -136,7 +135,13 @@ export default function Header({
 
           {/* Real account select option */}
           <button
-            onClick={() => onSwitchAccount('real')}
+            onClick={() => {
+              if (!currentUser && account.mode !== 'real') {
+                onOpenAuth();
+                return;
+              }
+              onSwitchAccount('real');
+            }}
             className={`relative px-2.5 py-1 md:px-3.5 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
               account.mode === 'real'
                 ? isDark
@@ -167,14 +172,14 @@ export default function Header({
                 className={`flex items-center space-x-1.5 text-[10px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                   isActive
                     ? isDark 
-                      ? 'bg-slate-800/90 text-teal-400 border border-teal-500/20 shadow-[0_0_8px_rgba(20,184,166,0.05)]' 
+                      ? 'bg-slate-800/90 text-yellow-400 border border-yellow-500/20 shadow-[0_0_8px_rgba(20,184,166,0.05)]' 
                       : 'bg-white text-slate-900 border border-slate-200 shadow-sm'
                     : isDark 
                       ? 'text-slate-450 hover:text-white hover:bg-slate-800/30 border border-transparent' 
                       : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
                 }`}
               >
-                <IconComponent className={`h-3 w-3 ${isActive ? 'text-teal-400' : 'text-slate-450'}`} />
+                <IconComponent className={`h-3 w-3 ${isActive ? 'text-yellow-400' : 'text-slate-450'}`} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -188,7 +193,7 @@ export default function Header({
                 : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
             }`}
           >
-            <HelpCircle className="h-3 w-3 text-teal-400" />
+            <HelpCircle className="h-3 w-3 text-yellow-400" />
             <span>Academy</span>
           </button>
         </nav>
@@ -204,10 +209,16 @@ export default function Header({
             <div className={`text-sm md:text-base font-mono font-black tracking-tight flex items-center justify-end space-x-0.5 ${
               account.mode === 'real' 
                 ? isDark ? 'text-amber-400' : 'text-amber-600 font-extrabold'
-                : isDark ? 'text-teal-400' : 'text-emerald-600 font-extrabold'
+                : isDark ? 'text-yellow-400' : 'text-emerald-600 font-extrabold'
             }`}>
-              <span className="text-xs font-semibold select-none">$</span>
-              <span>{formatBalance(account.balance)}</span>
+              {account.mode === 'real' && !currentUser ? (
+                <span className="text-[11px] md:text-xs font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login to View</span>
+              ) : (
+                <>
+                  <span className="text-xs font-semibold select-none">$</span>
+                  <span>{formatBalance(account.balance)}</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -223,8 +234,8 @@ export default function Header({
             className={`relative px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[9px] md:text-xs font-extrabold uppercase tracking-widest transition-all duration-250 active:scale-95 shadow-md flex items-center justify-center space-x-1.5 cursor-pointer ${
               currentUser
                 ? isDark 
-                  ? 'bg-gradient-to-r from-teal-500 to-cyan-400 text-slate-950 font-bold hover:opacity-90 shadow-teal-500/10' 
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/15'
+                  ? 'bg-gradient-to-r from-yellow-500 to-yellow-400 text-slate-950 font-bold hover:opacity-90 shadow-yellow-500/10' 
+                  : 'bg-yellow-600 text-white hover:bg-yellow-700 shadow-yellow-600/15'
                 : 'bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20'
             }`}
             title={currentUser ? 'Access deposits & withdrawals' : 'Authentication Required'}
@@ -255,9 +266,9 @@ export default function Header({
               title="Toggle Layout Colors"
             >
               {themeMode === 'auto' ? (
-                <Laptop className="h-3 w-3 md:h-3.5 md:w-3.5 text-teal-400 animate-pulse" />
+                <Laptop className="h-3 w-3 md:h-3.5 md:w-3.5 text-yellow-400 animate-pulse" />
               ) : themeMode === 'dark' ? (
-                <Moon className="h-3 w-3 md:h-3.5 md:w-3.5 text-indigo-400" />
+                <Moon className="h-3 w-3 md:h-3.5 md:w-3.5 text-yellow-400" />
               ) : (
                 <Sun className="h-3 w-3 md:h-3.5 md:w-3.5 text-amber-500" />
               )}
@@ -277,11 +288,11 @@ export default function Header({
             </button>
 
             {/* Admin Guard Console */}
-            {currentUser?.email === 'admin@maritech.com' && onOpenAdmin && (
+            {currentUser?.email === 'admin@lwex.com' && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
                 className="rounded-lg p-1.5 md:p-2 border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/25 animate-pulse cursor-pointer flex-shrink-0"
-                title="MariTech Guard Console"
+                title="LWEX Guard Console"
               >
                 <ShieldCheck className="h-3 w-3 md:h-3.5 md:w-3.5" />
               </button>
@@ -310,14 +321,14 @@ export default function Header({
                 className={`flex items-center space-x-1.5 text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-md transition-all duration-150 cursor-pointer ${
                   isActive
                     ? isDark 
-                      ? 'bg-slate-850 text-teal-400 border border-teal-500/15' 
+                      ? 'bg-slate-850 text-yellow-400 border border-yellow-500/15' 
                       : 'bg-white text-slate-900 border border-slate-200 shadow-sm'
                     : isDark 
                       ? 'text-slate-400 hover:text-white' 
                       : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <IconComponent className="h-2.5 w-2.5 text-teal-400" />
+                <IconComponent className="h-2.5 w-2.5 text-yellow-400" />
                 <span>{tab.label}</span>
               </button>
             );
@@ -329,7 +340,7 @@ export default function Header({
               isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <HelpCircle className="h-2.5 w-2.5 text-teal-400" />
+            <HelpCircle className="h-2.5 w-2.5 text-yellow-400" />
             <span>Academy</span>
           </button>
         </div>
@@ -345,11 +356,17 @@ export default function Header({
                 ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
                 : 'bg-amber-50 border-amber-200 text-amber-700'
               : isDark
-                ? 'bg-teal-500/10 border-teal-500/20 text-teal-400'
+                ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
                 : 'bg-emerald-50 border-emerald-200 text-emerald-700'
           }`}>
-            <span>$</span>
-            <span>{formatBalance(account.balance)}</span>
+            {account.mode === 'real' && !currentUser ? (
+              <span className="text-[10px] font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login</span>
+            ) : (
+              <>
+                <span>$</span>
+                <span>{formatBalance(account.balance)}</span>
+              </>
+            )}
           </div>
         </div>
       </div>

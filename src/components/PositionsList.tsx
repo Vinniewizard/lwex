@@ -46,14 +46,14 @@ export default function PositionsList({
             onClick={() => onChangeTab('positions')}
             className={`relative flex h-12 items-center px-4 text-xs font-bold uppercase transition-all tracking-wide border-b-2 cursor-pointer ${
               activeTab === 'positions'
-                ? isDark ? 'border-teal-400 text-teal-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
+                ? isDark ? 'border-yellow-400 text-yellow-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <span>Open Positions</span>
             {activeContracts.length > 0 && (
               <span className={`ml-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-extrabold ${
-                isDark ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30' : 'bg-black text-white'
+                isDark ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 'bg-black text-white'
               }`}>
                 {activeContracts.length}
               </span>
@@ -64,7 +64,7 @@ export default function PositionsList({
             onClick={() => onChangeTab('statements')}
             className={`relative flex h-12 items-center px-4 text-xs font-bold uppercase transition-all tracking-wide border-b-2 cursor-pointer ${
               activeTab === 'statements'
-                ? isDark ? 'border-teal-400 text-teal-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
+                ? isDark ? 'border-yellow-400 text-yellow-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -75,7 +75,7 @@ export default function PositionsList({
             onClick={() => onChangeTab('stats')}
             className={`relative flex h-12 items-center px-4 text-xs font-bold uppercase transition-all tracking-wide border-b-2 cursor-pointer ${
               activeTab === 'stats'
-                ? isDark ? 'border-teal-400 text-teal-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
+                ? isDark ? 'border-yellow-400 text-yellow-400 font-extrabold shadow-[0_4px_12px_-4px_rgba(20,184,166,0.5)]' : 'border-black text-black'
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
@@ -336,11 +336,11 @@ export default function PositionsList({
                   <span className="block text-[9px] text-gray-400 uppercase tracking-wider font-bold">
                     Contracts Closed
                   </span>
-                  <span className="font-mono text-base font-extrabold text-blue-600">
+                  <span className="font-mono text-base font-extrabold text-yellow-600">
                     {totalTrades}
                   </span>
                 </div>
-                <div className="p-2 rounded bg-blue-50/10 text-blue-600">
+                <div className="p-2 rounded bg-blue-50/10 text-yellow-600">
                   <Activity className="h-4 w-4" />
                 </div>
               </div>

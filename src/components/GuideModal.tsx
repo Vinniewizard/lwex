@@ -26,7 +26,7 @@ export default function GuideModal({ isOpen, onClose }: GuideModalProps) {
     setTimeout(() => {
       setFormSubmitted(false);
       setFormData({ email: '', phone: '' });
-      alert("Application Received! The MariTech Education team will contact you shortly.");
+      alert("Application Received! The LWEX Education team will contact you shortly.");
     }, 2500);
   };
 
@@ -41,7 +41,7 @@ export default function GuideModal({ isOpen, onClose }: GuideModalProps) {
               <BookOpen className="h-5 w-5 text-purple-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight font-sans">MariTech Academy</h2>
+              <h2 className="text-lg font-bold tracking-tight font-sans">LWEX Academy</h2>
               <p className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-widest">Institutional Knowledge Base</p>
             </div>
           </div>
@@ -94,7 +94,7 @@ export default function GuideModal({ isOpen, onClose }: GuideModalProps) {
             </div>
 
             <div className="pt-2 space-y-1.5">
-              <span className="block font-bold text-gray-400 uppercase text-[9px] mb-2 tracking-widest pl-1">Maritech Premium</span>
+              <span className="block font-bold text-gray-400 uppercase text-[9px] mb-2 tracking-widest pl-1">LWEX Premium</span>
               <button
                 onClick={() => setActiveTab('pro-academy')}
                 className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition-all cursor-pointer border ${
@@ -165,7 +165,7 @@ export default function GuideModal({ isOpen, onClose }: GuideModalProps) {
               </div>
             ) : isProAcademy ? (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-400">
-                <div className="rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 p-8 text-white shadow-xl space-y-6">
+                <div className="rounded-2xl bg-gradient-to-br from-purple-600 to-yellow-700 p-8 text-white shadow-xl space-y-6">
                   <div className="flex items-start justify-between">
                     <div className="space-y-2">
                     <h3 className="text-2xl font-black tracking-tight leading-tight">Apply for Institutional<br/>Live Masterclasses</h3>
