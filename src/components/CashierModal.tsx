@@ -53,6 +53,8 @@ export default function CashierModal({
   const [isPolling, setIsPolling] = useState(false);
   
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
+  const [withdrawalHistory, setWithdrawalHistory] = useState<any[]>([]);
+  const [historyTab, setHistoryTab] = useState<'deposits' | 'withdrawals'>('deposits');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
@@ -206,6 +208,7 @@ export default function CashierModal({
           const data = await res.json();
           if (res.ok && data.success) {
             setDepositHistory(data.history || []);
+            setWithdrawalHistory(data.withdrawals || []);
           }
         } catch (error) {
           console.error('Failed to fetch deposit history:', error);
@@ -428,7 +431,22 @@ export default function CashierModal({
         ) : activeTab === 'history' ? (
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Deposit History</h3>
+              <div className={`flex rounded p-0.5 ${theme === 'dark' ? 'bg-slate-900 border border-slate-800' : 'bg-gray-100 border border-gray-200'}`}>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('deposits')}
+                  className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase rounded transition-colors ${historyTab === 'deposits' ? (theme === 'dark' ? 'bg-slate-800 text-yellow-500 shadow-sm' : 'bg-white text-yellow-600 shadow-sm') : 'text-slate-400 hover:text-slate-300'}`}
+                >
+                  Deposits
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('withdrawals')}
+                  className={`px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase rounded transition-colors ${historyTab === 'withdrawals' ? (theme === 'dark' ? 'bg-slate-800 text-yellow-500 shadow-sm' : 'bg-white text-yellow-600 shadow-sm') : 'text-slate-400 hover:text-slate-300'}`}
+                >
+                  Withdrawals
+                </button>
+              </div>
               <button
                 onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
                 className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded transition-colors ${theme === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
@@ -440,45 +458,107 @@ export default function CashierModal({
               <div className="flex items-center justify-center p-8">
                 <RefreshCw className="h-6 w-6 animate-spin text-yellow-500" />
               </div>
-            ) : depositHistory.length === 0 ? (
-              <div className="text-center p-8 border rounded-lg border-dashed border-slate-700 bg-slate-900/50">
-                <p className="text-xs text-slate-400">No verified deposits found.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
-                <table className="w-full text-left text-xs min-w-[400px]">
-                  <thead className={`sticky top-0 ${theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-gray-100 text-gray-600'} text-[9px] uppercase tracking-wider z-10`}>
-                    <tr>
-                      <th className="px-3 py-2 font-bold rounded-tl-lg">Date</th>
-                      <th className="px-3 py-2 font-bold">Amount</th>
-                      <th className="px-3 py-2 font-bold">Asset</th>
-                      <th className="px-3 py-2 font-bold text-right rounded-tr-lg">Tx Hash</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50 font-mono text-[10px] sm:text-xs">
-                    {[...depositHistory].sort((a, b) => {
-                      const dA = new Date(a.date).getTime();
-                      const dB = new Date(b.date).getTime();
-                      return sortOrder === 'desc' ? dB - dA : dA - dB;
-                    }).map((d, i) => (
-                      <tr key={i} className={`group transition-colors ${theme === 'dark' ? 'hover:bg-slate-900/50' : 'hover:bg-gray-50'}`}>
-                        <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
-                          {new Date(d.date).toLocaleDateString()} <span className="text-[9px]">{new Date(d.date).toLocaleTimeString()}</span>
-                        </td>
-                        <td className="px-3 py-2.5 font-bold text-green-500">
-                          +${Number(d.amount).toFixed(2)}
-                        </td>
-                        <td className="px-3 py-2.5 font-bold text-yellow-500">
-                          {d.coin.toUpperCase()}
-                        </td>
-                        <td className="px-3 py-2.5 text-right opacity-50 group-hover:opacity-100 transition-opacity">
-                          <span className="truncate max-w-[80px] sm:max-w-[120px] inline-block">{d.txHash}</span>
-                        </td>
+            ) : historyTab === 'deposits' ? (
+              depositHistory.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg border-dashed border-slate-700 bg-slate-900/50">
+                  <p className="text-xs text-slate-400">No verified deposits found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-left text-xs min-w-[400px]">
+                    <thead className={`sticky top-0 ${theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-gray-100 text-gray-600'} text-[9px] uppercase tracking-wider z-10`}>
+                      <tr>
+                        <th className="px-3 py-2 font-bold rounded-tl-lg">Date</th>
+                        <th className="px-3 py-2 font-bold">Amount</th>
+                        <th className="px-3 py-2 font-bold">Asset</th>
+                        <th className="px-3 py-2 font-bold text-right rounded-tr-lg">Tx Hash</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 font-mono text-[10px] sm:text-xs">
+                      {[...depositHistory].sort((a, b) => {
+                        const dA = new Date(a.date).getTime();
+                        const dB = new Date(b.date).getTime();
+                        return sortOrder === 'desc' ? dB - dA : dA - dB;
+                      }).map((d, i) => (
+                        <tr key={i} className={`group transition-colors ${theme === 'dark' ? 'hover:bg-slate-900/50' : 'hover:bg-gray-50'}`}>
+                          <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
+                            {new Date(d.date).toLocaleDateString()} <span className="text-[9px]">{new Date(d.date).toLocaleTimeString()}</span>
+                          </td>
+                          <td className="px-3 py-2.5 font-bold text-green-500">
+                            +${Number(d.amount).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2.5 font-bold text-yellow-500">
+                            {d.coin.toUpperCase()}
+                          </td>
+                          <td className="px-3 py-2.5 text-right opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span className="truncate max-w-[80px] sm:max-w-[120px] inline-block">{d.txHash}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              // Withdrawals View
+              withdrawalHistory.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg border-dashed border-slate-700 bg-slate-900/50">
+                  <p className="text-xs text-slate-400">No withdrawals found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-left text-xs min-w-[400px]">
+                    <thead className={`sticky top-0 ${theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-gray-100 text-gray-600'} text-[9px] uppercase tracking-wider z-10`}>
+                      <tr>
+                        <th className="px-3 py-2 font-bold rounded-tl-lg">Date</th>
+                        <th className="px-3 py-2 font-bold">Amount</th>
+                        <th className="px-3 py-2 font-bold">Asset/Method</th>
+                        <th className="px-3 py-2 font-bold">Status</th>
+                        <th className="px-3 py-2 font-bold text-right rounded-tr-lg">Destination</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50 font-mono text-[10px] sm:text-xs">
+                      {[...withdrawalHistory].sort((a, b) => {
+                        const dA = new Date(a.date).getTime();
+                        const dB = new Date(b.date).getTime();
+                        return sortOrder === 'desc' ? dB - dA : dA - dB;
+                      }).map((w, i) => (
+                        <tr key={i} className={`group transition-colors ${theme === 'dark' ? 'hover:bg-slate-900/50' : 'hover:bg-gray-50'}`}>
+                          <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
+                            {new Date(w.date).toLocaleDateString()} <span className="text-[9px]">{new Date(w.date).toLocaleTimeString()}</span>
+                          </td>
+                          <td className="px-3 py-2.5 font-bold text-red-500">
+                            -${Number(w.amount).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2.5 font-bold text-yellow-500 uppercase">
+                            {w.paymentMethod === 'paybill' ? 'M-PESA' : w.coin}
+                          </td>
+                          <td className="px-3 py-2.5 text-[10px]">
+                            {w.status === 'pending' && (
+                              <span className="flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full w-max">
+                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span> Pending
+                              </span>
+                            )}
+                            {w.status === 'processing' && (
+                              <span className="flex items-center gap-1 text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full w-max">
+                                <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Processing
+                              </span>
+                            )}
+                            {w.status === 'completed' || w.status === 'paid' ? (
+                              <span className="flex items-center gap-1 text-green-500 bg-green-500/10 px-2 py-1 rounded-full w-max">
+                                <Check className="w-2.5 h-2.5" /> Completed
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2.5 text-right opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span className="truncate max-w-[80px] sm:max-w-[120px] inline-block">{w.address}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
         ) : (
@@ -864,7 +944,7 @@ export default function CashierModal({
               </div>
             )}
 
-            {paymentMethod === 'paybill' && (
+            {paymentMethod === 'paybill' && activeTab === 'deposit' && (
               <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
                   <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
@@ -915,6 +995,30 @@ export default function CashierModal({
                   <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
                     Instructions: Pay <span className="text-green-500 font-bold">${amount}</span> to the Paybill above, take a screenshot of the confirmation message, and upload it here.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'paybill' && activeTab === 'withdraw' && (
+              <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
+                  <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
+                    M-Pesa Withdrawal
+                  </span>
+                  <DollarSign className="h-3.5 w-3.5 text-green-500" />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="mpesa-withdraw-number" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Receiving M-Pesa Phone Number
+                  </label>
+                  <input
+                    id="mpesa-withdraw-number"
+                    type="text"
+                    value={targetAddress}
+                    onChange={(e) => setTargetAddress(e.target.value)}
+                    placeholder="e.g. 0712345678"
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-green-500 outline-none transition-all"
+                  />
                 </div>
               </div>
             )}

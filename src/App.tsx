@@ -816,9 +816,9 @@ export default function App() {
         </div>
 
         {/* Central Workspace grids */}
-        <div className="flex-1 flex flex-col md:flex-row gap-4 items-stretch">
+        <div className="flex-1 flex flex-col md:flex-row gap-4 items-stretch overflow-hidden">
           {/* Chart Left column */}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 flex flex-col gap-4 min-w-0">
             <Chart
               theme={theme}
               asset={activeAsset}

@@ -1141,7 +1141,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
     }
   });
 
-  // User endpoint - Get deposit history
+  // User endpoint - Get transaction history
   app.get('/api/cashier/history', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     try {
@@ -1153,7 +1153,10 @@ Active technical indicator values: ${indicatorsString}.`}`;
       const db = getD1Database();
       const depositsRes = await db.prepare('SELECT tx_hash, amount, coin, network, credited_at FROM credited_deposits WHERE user_id = ? ORDER BY credited_at DESC').bind(userId).all();
       
-      const history = (depositsRes?.results || []).map((row: any) => ({
+      const withdrawalsRes = await db.prepare('SELECT id, amount, coin, network, status, created_at, payment_method, address FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all();
+      
+      const deposits = (depositsRes?.results || []).map((row: any) => ({
+        type: 'deposit',
         txHash: row.tx_hash,
         amount: row.amount,
         coin: row.coin,
@@ -1161,7 +1164,19 @@ Active technical indicator values: ${indicatorsString}.`}`;
         date: row.credited_at
       }));
 
-      return res.json({ success: true, history });
+      const withdrawals = (withdrawalsRes?.results || []).map((row: any) => ({
+        type: 'withdrawal',
+        id: row.id,
+        amount: row.amount,
+        coin: row.coin,
+        network: row.network,
+        status: row.status,
+        date: row.created_at,
+        paymentMethod: row.payment_method,
+        address: row.address
+      }));
+
+      return res.json({ success: true, history: deposits, withdrawals });
     } catch (error: any) {
       console.error('History fetch error:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
