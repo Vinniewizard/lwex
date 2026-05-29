@@ -44,6 +44,9 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [adminKey, setAdminKey] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginMethod, setLoginMethod] = useState<'creds' | 'key'>('creds');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'deposits' | 'game'>('stats');
@@ -135,7 +138,17 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchData(adminKey);
+    let finalKey = adminKey;
+    if (loginMethod === 'creds') {
+      if (username.trim() === 'GADMIN' && password.trim() === 'GADMIN') {
+        finalKey = 'admin-secret-key';
+        setAdminKey('admin-secret-key');
+      } else {
+        alert('Invalid GADMIN Credentials. Access denied.');
+        return;
+      }
+    }
+    fetchData(finalKey);
   };
 
   if (!isOpen) return null;
@@ -158,29 +171,102 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
         </h2>
 
         {!isAuthenticated ? (
-          <form onSubmit={handleLogin} className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-bold mb-2">Admin Key</label>
-              <input
-                type="password"
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                placeholder="Enter admin secret key"
-                className={`w-full rounded px-3 py-2 border transition-all ${
-                  theme === 'dark'
-                    ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
-                    : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+          <div className="space-y-6 max-w-md">
+            {/* Login Mode Tabs */}
+            <div className={`flex p-1 rounded-lg max-w-xs gap-1 border ${
+              theme === 'dark' ? 'bg-slate-900/65 border-slate-800' : 'bg-slate-100 border-slate-200'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('creds')}
+                className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  loginMethod === 'creds' 
+                    ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                    : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
-              />
+              >
+                GADMIN Login
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('key')}
+                className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  loginMethod === 'key' 
+                    ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm'
+                    : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Security Key
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 rounded transition-all disabled:opacity-50"
-            >
-              {loading ? 'Loading...' : 'Access Admin Panel'}
-            </button>
-          </form>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              {loginMethod === 'creds' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                      Admin Username
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter Username (e.g. GADMIN)"
+                      required
+                      className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
+                        theme === 'dark'
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
+                          : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                      Admin Password
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter Password (e.g. GADMIN)"
+                      required
+                      className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
+                        theme === 'dark'
+                          ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
+                          : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                      }`}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                    Security Access Key
+                  </label>
+                  <input
+                    type="password"
+                    value={adminKey}
+                    onChange={(e) => setAdminKey(e.target.value)}
+                    placeholder="Enter security access token"
+                    required
+                    className={`w-full rounded px-3 py-2.5 text-xs font-semibold border transition-all ${
+                      theme === 'dark'
+                        ? 'bg-slate-900 border-slate-800 text-white focus:border-cyan-500'
+                        : 'bg-white border-gray-200 text-black focus:border-cyan-500'
+                    }`}
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 rounded transition-all disabled:opacity-50 mt-4 cursor-pointer"
+              >
+                {loading ? 'Authenticating...' : 'Access Admin Panel'}
+              </button>
+            </form>
+          </div>
         ) : (
           <>
             <div className="flex items-center space-x-2 border-b border-slate-800 mb-6 overflow-x-auto pb-2">

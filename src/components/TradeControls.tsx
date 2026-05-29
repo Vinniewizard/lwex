@@ -488,9 +488,11 @@ export default function TradeControls({
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">
-                  DIGIT OVER ▲
+                   DIGIT OVER ▲
                 </span>
-                <span className={`text-[9px] ${isDark ? 'text-slate-950 font-bold' : 'text-purple-100'}`}>Last digit &gt; {targetDigit}</span>
+                <span className={`text-[9px] ${isDark ? 'text-slate-950 font-bold' : 'text-purple-100'}`}>
+                  Last digit {'>'} {targetDigit}
+                </span>
               </div>
               <div className="text-right font-mono font-bold text-xs">
                 ${payoutPotential.toFixed(2)}
@@ -504,9 +506,11 @@ export default function TradeControls({
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">
-                  DIGIT UNDER ▼
+                   DIGIT UNDER ▼
                 </span>
-                <span className={`text-[9px] ${isDark ? 'text-slate-300' : 'text-purple-100'}`}>Last digit &lt; {targetDigit}</span>
+                <span className={`text-[9px] ${isDark ? 'text-slate-300' : 'text-purple-100'}`}>
+                  Last digit {'<'} {targetDigit}
+                </span>
               </div>
               <div className="text-right font-mono font-bold text-xs">
                 ${payoutPotential.toFixed(2)}

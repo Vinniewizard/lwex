@@ -173,6 +173,19 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
 
+  // Synchronise route path to open Secure Admin login page instantly
+  useEffect(() => {
+    const handlePathCheck = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/secure-admin' || path === '/secure-admin/' || path.endsWith('/secure-admin') || path.endsWith('/secure-admin/')) {
+        setIsAdminOpen(true);
+      }
+    };
+    handlePathCheck();
+    window.addEventListener('popstate', handlePathCheck);
+    return () => window.removeEventListener('popstate', handlePathCheck);
+  }, []);
+
   const soundEnabledRef = useRef(soundEnabled);
 
   useEffect(() => {
