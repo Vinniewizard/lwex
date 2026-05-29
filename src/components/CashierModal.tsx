@@ -65,10 +65,44 @@ export default function CashierModal({
     }
   }, [isOpen, currentUser]);
 
+  // Synchronize limits and clear states when tab changes
   useEffect(() => {
-    if (!isOpen || activeTab !== 'deposit' || !isCryptoRoute) return;
+    setApiError('');
+    setSuccessMsg('');
+    setDepositAddress(null);
+    setSandboxReason('');
+    
+    if (activeTab === 'deposit') {
+      if (amount < 1) setAmount(10);
+    } else {
+      if (amount < 10) setAmount(10);
+    }
+  }, [activeTab]);
 
-    let cancelled = false;
+  const handleAmountChange = (val: number) => {
+    setAmount(val);
+    setDepositAddress(null);
+    setSandboxReason('');
+    setApiError('');
+  };
+
+  const handleCoinChange = (coin: string) => {
+    setSelectedCoin(coin);
+    setDepositAddress(null);
+    setSandboxReason('');
+    setApiError('');
+    if (coin === 'BTC') setSelectedNetwork('BTC');
+    else if (coin === 'ETH') setSelectedNetwork('ETH');
+    else if (coin === 'USDTTRC20') setSelectedNetwork('TRX');
+    else if (coin === 'USDT') setSelectedNetwork('ETH');
+  };
+
+  const handleGenerateDepositAddress = async () => {
+    if (amount < 1) {
+      setApiError('The minimum deposit is $1 USD.');
+      return;
+    }
+
     setIsAddressLoading(true);
     setApiError('');
     setSandboxReason('');
@@ -76,48 +110,40 @@ export default function CashierModal({
 
     const userId = currentUser?.id || currentUser?.email || account.id;
 
-    // For NOWPayments, we create a payment record immediately to get an address
-    fetch(`/api/cashier/create-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount,
-        coin: selectedCoin,
-        userId
-      })
-    })
-      .then(async (response) => {
-        const data = await readApiResponse(response);
-        if (!response.ok || !data.success) {
-          throw new Error(data.message || 'Unable to create NOWPayments session.');
-        }
-        if (!cancelled) {
-          setDepositAddress({
-            address: data.address,
-            paymentId: data.payment_id,
-            amount: data.amount
-          });
-          if (data.isSandbox && data.sandboxReason) {
-            setSandboxReason(data.sandboxReason);
-          } else {
-            setSandboxReason('');
-          }
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setDepositAddress(null);
-          setApiError(error.message || 'Unable to load deposit address.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsAddressLoading(false);
+    try {
+      const response = await fetch(`/api/cashier/create-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          coin: selectedCoin,
+          userId
+        })
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, isCryptoRoute, isOpen, selectedCoin, amount]);
+      const data = await readApiResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Unable to generate deposit address.');
+      }
+
+      setDepositAddress({
+        address: data.address,
+        paymentId: data.payment_id,
+        amount: data.amount
+      });
+
+      if (data.isSandbox && data.sandboxReason) {
+        setSandboxReason(data.sandboxReason);
+      } else {
+        setSandboxReason('');
+      }
+    } catch (error: any) {
+      setDepositAddress(null);
+      setApiError(error.message || 'Failed to locate a secure deposit gateway.');
+    } finally {
+      setIsAddressLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -135,6 +161,16 @@ export default function CashierModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (amount <= 0) return;
+
+    if (activeTab === 'deposit' && amount < 1) {
+      setApiError('The minimum deposit amount is $1 USD.');
+      return;
+    }
+
+    if (activeTab === 'withdraw' && amount < 10) {
+      setApiError('The minimum withdrawal amount is $10 USD.');
+      return;
+    }
 
     if (activeTab === 'withdraw' && amount > account.balance) {
       setApiError('Withdrawal amount cannot exceed your active balance.');
@@ -181,8 +217,7 @@ export default function CashierModal({
           setSuccessMsg('Deposit details submitted! MariTech admin will verify and credit your account within 30 minutes.');
           return;
         } else {
-          // Paybill withdrawal? Usually it's to M-Pesa. For now, let's say it's pending.
-          throw new Error('M-Pesa withdrawals are currently processed manually. Please contact support with your M-Pesa number.');
+          throw new Error('M-Pesa withdrawals are currently processed manually. Please contact support with your M-Pesa details.');
         }
       }
 
@@ -192,7 +227,7 @@ export default function CashierModal({
 
       if (activeTab === 'deposit') {
         if (!depositAddress?.paymentId) {
-          throw new Error('Please wait for the deposit address to load.');
+          throw new Error('Please request a secure deposit address first.');
         }
 
         const response = await fetch(`/api/cashier/verify-deposit?paymentId=${depositAddress.paymentId}&userId=${userId}`);
@@ -205,7 +240,7 @@ export default function CashierModal({
 
         const creditedAmount = Number(data.creditedAmount) || amount;
         onDeposit(creditedAmount);
-        setSuccessMsg(`Deposit successful! $${creditedAmount.toLocaleString()} has been credited via NOWPayments.`);
+        setSuccessMsg(`Deposit successful! $${creditedAmount.toLocaleString()} has been credited to your wallet.`);
       } else {
         if (!targetAddress.trim()) {
           throw new Error('Enter the receiving wallet address.');
@@ -229,7 +264,7 @@ export default function CashierModal({
         onWithdraw(amount);
         setTargetAddress('');
         setAddressTag('');
-        setSuccessMsg(`Withdrawal submitted. $${amount.toLocaleString()} is now being processed to your ${selectedCoin} wallet.`);
+        setSuccessMsg(data.message || `Withdrawal submitted. $${amount.toLocaleString()} is now being processed to your ${selectedCoin} wallet.`);
       }
     } catch (error: any) {
       setApiError(error.message || 'Cashier request failed.');
@@ -306,198 +341,355 @@ export default function CashierModal({
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-2.5 sm:space-y-3">
+          <form id="cashier-action-form" onSubmit={handleSubmit} className="space-y-4">
+            {/* Amount input block */}
             <div className="space-y-1.5">
-              <label className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                USD Amount
+              <label htmlFor="cashier-amount-input" className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase block tracking-wider">
+                USD Amount requested
               </label>
-              <div className="flex rounded-md bg-gray-50 border border-gray-200 items-center px-3 focus-within:border-black min-h-11 sm:min-h-10">
-                <DollarSign className="h-4 w-4 text-gray-450 flex-shrink-0" />
+              <div className={`flex rounded-md border items-center px-3 focus-within:border-cyan-500 min-h-12 sm:min-h-11 transition-colors ${
+                theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <DollarSign className="h-4.5 w-4.5 text-slate-400 flex-shrink-0" />
                 <input
+                  id="cashier-amount-input"
                   type="number"
-                  min={10}
+                  min={activeTab === 'deposit' ? 1 : 10}
                   max={50000}
+                  disabled={activeTab === 'deposit' && depositAddress !== null}
                   value={amount}
-                  onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                  onChange={(e) => handleAmountChange(Math.max(0, parseInt(e.target.value) || 0))}
                   className="w-full bg-transparent font-mono text-base sm:text-sm font-bold focus:outline-none text-current"
                 />
               </div>
+              <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 font-bold">
+                <span>{activeTab === 'deposit' ? 'Minimum deposit is $1 USD' : 'Minimum withdrawal is $10 USD'}</span>
+                {activeTab === 'deposit' && depositAddress !== null && (
+                  <span className="text-cyan-500 animate-pulse font-mono">Amount locked for instructions</span>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-              {[50, 100, 500, 2000].map((val) => (
-                <button
-                  type="button"
-                  key={val}
-                  onClick={() => setAmount(val)}
-                  className="rounded bg-gray-50 border border-gray-150 hover:bg-gray-100 py-2 sm:py-1 text-[11px] sm:text-[10px] font-bold text-gray-500 hover:text-black transition-all cursor-pointer"
-                >
-                  +${val}
-                </button>
-              ))}
-            </div>
+            {/* Quick Presets Grid */}
+            {(!depositAddress || activeTab === 'withdraw') && (
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+                {(activeTab === 'deposit' ? [10, 25, 100, 250] : [20, 50, 250, 1000]).map((val) => (
+                  <button
+                    id={`cashier-preset-${val}`}
+                    type="button"
+                    key={val}
+                    onClick={() => handleAmountChange(val)}
+                    className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
+                      amount === val
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-500'
+                        : theme === 'dark'
+                          ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    ${val}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {isKenya && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+            {/* Kenya Paybill vs NOWPayments select bar */}
+            {isKenya && !depositAddress && (
+              <div className="space-y-1.5 pt-1.5 border-t border-slate-850 dark:border-slate-800/60">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Select payment route
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
+                    id="cashier-route-mpesa"
                     type="button"
                     onClick={() => selectPaymentMethod('paybill')}
-                    className={`rounded-lg border p-3 sm:p-2 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 sm:gap-1 ${
-                      paymentMethod === 'paybill' ? 'border-green-500 text-current bg-green-50/10' : 'border-slate-800 text-slate-400 hover:bg-slate-905'
+                    className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                      paymentMethod === 'paybill' ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
                     }`}
                   >
-                    <DollarSign className={`h-5 w-5 sm:h-4 sm:w-4 ${paymentMethod === 'paybill' ? 'text-green-500' : ''}`} />
-                    <span className="text-[10px] sm:text-[9px] font-bold">M-Pesa Paybill</span>
+                    <DollarSign className="h-5 w-5" />
+                    <span className="text-[10px] font-black">M-Pesa Paybill</span>
                   </button>
 
                   <button
+                    id="cashier-route-crypto"
                     type="button"
                     onClick={() => selectPaymentMethod('nowpayments')}
-                    className={`rounded-lg border p-3 sm:p-2 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 sm:gap-1 ${
-                      paymentMethod === 'nowpayments' ? 'border-amber-500 text-current bg-amber-50/10' : 'border-slate-800 text-slate-400 hover:bg-slate-905'
+                    className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                      paymentMethod === 'nowpayments' ? 'border-cyan-500 text-cyan-500 bg-cyan-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
                     }`}
                   >
-                    <RefreshCw className={`h-5 w-5 sm:h-4 sm:w-4 ${paymentMethod === 'nowpayments' ? 'text-brand-accent' : ''}`} />
-                    <span className="text-[10px] sm:text-[9px] font-bold">NOWPayments</span>
+                    <RefreshCw className="h-5 w-5" />
+                    <span className="text-[10px] font-black">NOWPayments</span>
                   </button>
                 </div>
               </div>
             )}
 
             {isCryptoRoute && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Coin
+              <div className="space-y-4">
+                {/* Cryptocurrency selection dropdown as requested */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label htmlFor="cashier-coin-select" className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                      Cryptocurrency
                     </label>
                     <select
+                      id="cashier-coin-select"
+                      disabled={activeTab === 'deposit' && depositAddress !== null}
                       value={selectedCoin}
-                      onChange={(e) => {
-                        setSelectedCoin(e.target.value);
-                        if (e.target.value === 'BTC') setSelectedNetwork('BTC');
-                        else if (e.target.value === 'ETH') setSelectedNetwork('ETH');
-                        else if (e.target.value === 'USDTTRC20') setSelectedNetwork('TRX');
-                        else if (e.target.value === 'USDT') setSelectedNetwork('ETH');
-                      }}
-                      className="w-full rounded bg-slate-950 border border-slate-800 px-3 py-3 sm:py-2 text-xs text-white font-bold outline-none appearance-none cursor-pointer"
+                      onChange={(e) => handleCoinChange(e.target.value)}
+                      className={`w-full rounded-lg border px-3 py-3.5 sm:py-3 text-xs font-bold outline-none cursor-pointer transition-colors ${
+                        theme === 'dark' 
+                          ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-cyan-500' 
+                          : 'bg-white border-slate-250 text-slate-850 focus:border-cyan-500'
+                      }`}
                     >
                       <option value="BTC">BTC (Bitcoin)</option>
-                      <option value="ETH">ETH (Ethereum)</option>
-                      <option value="USDT">USDT (ERC20)</option>
-                      <option value="USDTTRC20">USDT (TRC20)</option>
+                      <option value="ETH">ETH (Ethereum ERC20)</option>
+                      <option value="USDT">USDT (USDT ERC20)</option>
+                      <option value="USDTTRC20">USDT (USDT TRC20)</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Network
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                      Required Network
                     </label>
-                    <div className="w-full rounded bg-slate-900 border border-slate-800 px-3 py-3 sm:py-2 text-xs text-brand-primary font-bold">
-                      {selectedNetwork}
+                    <div className={`w-full rounded-lg border px-3 py-3.5 sm:py-3 text-xs font-black font-mono transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-slate-900/40 border-slate-800 text-cyan-400' 
+                        : 'bg-slate-50 border-slate-200 text-cyan-600'
+                    }`}>
+                      {selectedNetwork} NETWORK
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">
-                      NOWPayments Crypto Gateway
-                    </span>
-                    <Shield className="h-3.5 w-3.5 text-brand-primary" />
+                {/* Main Crypto Panel Display */}
+                <div className={`rounded-xl border p-4 sm:p-5 space-y-4 ${
+                  theme === 'dark' ? 'bg-slate-905 border-slate-800/80 shadow-md' : 'bg-slate-50/50 border-slate-200 shadow-sm'
+                }`}>
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-800/10 dark:border-slate-800/50 pb-2">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        SECURE CRYPTO ENDPOINT
+                      </span>
+                    </div>
+                    <Shield className="h-4 w-4 text-cyan-500" />
                   </div>
 
                   {sandboxReason && (
-                    <div className="p-3 rounded bg-amber-500/10 border border-amber-500/30 text-amber-550 text-[10px] leading-relaxed space-y-1">
+                    <div className="p-3 rounded bg-amber-500/10 border border-amber-500/25 text-amber-550 text-[10px] leading-relaxed space-y-1">
                       <p className="font-bold flex items-center gap-1">
-                        <span className="animate-pulse">●</span> SANDBOX FALLBACK ACTIVE
+                        <span className="animate-pulse">●</span> LIVE SANDBOX DEPOSIT LEDGER
                       </p>
-                      <p className="text-[9px] text-slate-300 font-medium">{sandboxReason}</p>
+                      <p className="text-[9px] text-slate-700 dark:text-slate-300 font-medium">
+                        {sandboxReason}
+                      </p>
                     </div>
                   )}
 
                   {activeTab === 'deposit' ? (
                     <>
-                      <div className="space-y-1">
-                        <p className="text-[9px] text-slate-400 font-bold uppercase">
-                          MariTech {selectedCoin} ({selectedNetwork}) deposit address
-                        </p>
-                        <div className="flex items-center space-x-2 bg-slate-950 p-2 rounded border border-slate-800">
-                          <code className="text-[10px] text-brand-primary font-mono truncate flex-1">
-                            {isAddressLoading ? 'Generating NOWPayments address...' : depositAddress?.address || 'Address unavailable'}
-                          </code>
+                      {!depositAddress ? (
+                        <div className="py-4 text-center space-y-3">
+                          <div className="flex justify-center">
+                            <Wallet2 className="h-8 w-8 text-slate-400 animate-bounce" />
+                          </div>
+                          <p className="text-xs text-slate-400 dark:text-slate-300 font-medium max-w-xs mx-auto">
+                            Generate unique credentials to deposit {amount} USD via {selectedCoin}.
+                          </p>
                           <button
+                            id="cashier-generate-address-btn"
                             type="button"
-                            disabled={!depositAddress?.address}
-                            onClick={() => depositAddress?.address && navigator.clipboard.writeText(depositAddress.address)}
-                            className="text-slate-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
+                            disabled={isAddressLoading}
+                            onClick={handleGenerateDepositAddress}
+                            className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 px-4 rounded-lg transition-all cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                           >
-                            <RefreshCw className="h-3 w-3" />
+                            {isAddressLoading ? (
+                              <>
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                <span>Generating unique address...</span>
+                              </>
+                            ) : (
+                              <span>Generate {selectedCoin} Deposit Instructions</span>
+                            )}
                           </button>
                         </div>
-                        {depositAddress?.tag && (
-                          <div className="flex items-center space-x-2 bg-slate-950 p-2 rounded border border-slate-800">
-                            <code className="text-[10px] text-brand-primary font-mono truncate flex-1">
-                              Memo/Tag: {depositAddress.tag}
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => navigator.clipboard.writeText(depositAddress.tag || '')}
-                              className="text-slate-500 hover:text-white transition-colors cursor-pointer"
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                            </button>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* QR Code Container using safe qrserver API */}
+                          <div id="cashier-deposit-qrcode-card" className="flex flex-col items-center justify-center p-3 bg-white rounded-lg border border-slate-200 max-w-[160px] mx-auto select-none shadow">
+                            <img 
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(depositAddress.address ?? '')}`}
+                              alt="Cryptocurrency Address QR Target"
+                              className="h-28 w-28 object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="text-[8px] text-slate-500 font-black uppercase mt-1 tracking-wider font-mono">MARITECH SECURE TX</span>
                           </div>
-                        )}
-                      </div>
 
-                      <div className="p-3 bg-brand-primary/5 rounded border border-brand-primary/20 space-y-2">
-                        <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
-                          This payment is processed securely via the official <strong className="text-white">NOWPayments Gateway</strong> (hosted at <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline hover:text-brand-accent">account.nowpayments.io</a>).
-                        </p>
-                        <p className="text-[11px] text-slate-200 leading-relaxed font-bold">
-                          Send exactly <span className="text-brand-primary font-bold">{depositAddress?.amount || '...'} {selectedCoin}</span> to the address above. Your balance is credited automatically after confirmations.
-                        </p>
-                        {depositAddress?.paymentId && (
-                           <p className="text-[9px] text-slate-500 mt-2 font-mono">Session ID: {depositAddress.paymentId}</p>
-                        )}
-                      </div>
+                          {/* Address details */}
+                          <div className="space-y-2">
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                SEND {selectedCoin} TO THIS ADDRESS
+                              </p>
+                              <div className="flex items-center space-x-2 bg-slate-950 p-2.5 rounded border border-slate-800">
+                                <code className="text-xs text-brand-primary font-mono truncate flex-1 select-all">
+                                  {depositAddress.address}
+                                </code>
+                                <button
+                                  id="cashier-copy-address"
+                                  type="button"
+                                  onClick={() => {
+                                    if (depositAddress?.address) {
+                                      navigator.clipboard.writeText(depositAddress.address);
+                                      setSuccessMsg('Address copied to clipboard!');
+                                      setTimeout(() => setSuccessMsg(''), 2000);
+                                    }
+                                  }}
+                                  className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+                                  title="Copy Wallet Address"
+                                >
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+
+                            {depositAddress.tag && (
+                              <div className="space-y-1">
+                                <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                  REQUIRED MEMO / DESTINATION TAG
+                                </p>
+                                <div className="flex items-center space-x-2 bg-slate-950 p-2.5 rounded border border-slate-800">
+                                  <code className="text-xs text-brand-primary font-mono truncate flex-1 select-all font-bold">
+                                    {depositAddress.tag}
+                                  </code>
+                                  <button
+                                    id="cashier-copy-tag"
+                                    type="button"
+                                    onClick={() => {
+                                      if (depositAddress?.tag) {
+                                        navigator.clipboard.writeText(depositAddress.tag);
+                                        setSuccessMsg('Memo copied to clipboard!');
+                                        setTimeout(() => setSuccessMsg(''), 2000);
+                                      }
+                                    }}
+                                    className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+                                    title="Copy Memo"
+                                  >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Exact crypto amount instructions */}
+                            <div className="p-3 bg-cyan-950/20 rounded border border-cyan-500/20 space-y-1 text-center">
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">
+                                EXACT AMOUNT TO TRANSFER
+                              </p>
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-base sm:text-lg font-black text-cyan-400 font-mono">
+                                  {depositAddress.amount} {selectedCoin}
+                                </span>
+                                <button
+                                  id="cashier-copy-amount"
+                                  type="button"
+                                  onClick={() => {
+                                    if (depositAddress?.amount) {
+                                      navigator.clipboard.writeText(String(depositAddress.amount));
+                                      setSuccessMsg('Amount copied to clipboard!');
+                                      setTimeout(() => setSuccessMsg(''), 2000);
+                                    }
+                                  }}
+                                  className="text-slate-400 hover:text-cyan-400 transition-all cursor-pointer p-0.5"
+                                  title="Copy Amount"
+                                >
+                                  <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <p className="text-[9px] text-slate-400 font-medium">
+                                Equals exactly <strong className="text-white">${amount} USD</strong> at current real-time market rate.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Info footer */}
+                          <div className="space-y-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                            <p>
+                              Send funds using any cryptocurrency exchange or personal wallet. Direct account settings and billing links can be checked on <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-cyan-500 underline hover:text-cyan-400 font-bold">account.nowpayments.io</a>.
+                            </p>
+                            <p className="font-bold text-slate-600 dark:text-slate-300">
+                              Once successfully sent, click the 'Verify Blockchain Deposit' button below to automatically check confirms and credit your exchange balance immediately!
+                            </p>
+                          </div>
+
+                          {/* Start over button */}
+                          <button
+                            id="cashier-reset-deposit-btn"
+                            type="button"
+                            onClick={() => {
+                              setDepositAddress(null);
+                              setSandboxReason('');
+                            }}
+                            className="w-full bg-slate-905 hover:bg-slate-800 text-slate-400 dark:text-slate-300 border border-slate-800/60 text-[10px] uppercase font-bold py-2 rounded-md transition-colors cursor-pointer"
+                          >
+                            Enter Different Amount / Start Over
+                          </button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Receiving Wallet Address
-                        </label>
-                        <input
-                          type="text"
-                          value={targetAddress}
-                          onChange={(e) => setTargetAddress(e.target.value)}
-                          placeholder={`Paste ${selectedCoin}/${selectedNetwork} address`}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-3 sm:py-2 text-xs text-white font-mono focus:border-brand-primary outline-none transition-all"
-                        />
-                      </div>
+                      {/* Withdrawal form inputs */}
+                      <div className="space-y-3.5">
+                        <div className="space-y-1.5">
+                          <label htmlFor="cashier-dest-address" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Receiving {selectedCoin} Wallet Address
+                          </label>
+                          <input
+                            id="cashier-dest-address"
+                            type="text"
+                            value={targetAddress}
+                            onChange={(e) => setTargetAddress(e.target.value)}
+                            placeholder={`Paste your secure ${selectedCoin} (${selectedNetwork}) address`}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-cyan-500 outline-none transition-all"
+                          />
+                        </div>
 
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Memo / Tag
-                        </label>
-                        <input
-                          type="text"
-                          value={addressTag}
-                          onChange={(e) => setAddressTag(e.target.value)}
-                          placeholder="Optional"
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-3 sm:py-2 text-xs text-white font-mono focus:border-brand-primary outline-none transition-all"
-                        />
-                      </div>
+                        <div className="space-y-1.5">
+                          <label htmlFor="cashier-dest-tag" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Memo / Destination Tag <span className="text-slate-500 lowercase">(optional)</span>
+                          </label>
+                          <input
+                            id="cashier-dest-tag"
+                            type="text"
+                            value={addressTag}
+                            onChange={(e) => setAddressTag(e.target.value)}
+                            placeholder="Destination tag if sending to exchange"
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-3 sm:py-2.5 text-xs text-white font-mono focus:border-cyan-500 outline-none transition-all"
+                          />
+                        </div>
 
-                      <div className="p-3 bg-amber-500/5 rounded border border-amber-500/20 space-y-2">
-                        <p className="text-[10px] text-slate-300 font-medium leading-relaxed">
-                          Live withdrawal dispatch is processed automatically to your selected currency wallet using the official <strong className="text-white">NOWPayments Integration</strong> (backed securely by <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline hover:text-brand-accent">account.nowpayments.io</a>).
-                        </p>
+                        <div className="p-3 bg-cyan-950/20 border border-cyan-500/10 rounded text-[10px] text-slate-400 leading-relaxed space-y-1.5 font-medium">
+                          <p>
+                            Withdrawals are processed via safe direct API payloads. Always ensure your destination wallet supports the <strong className="text-white font-mono">{selectedNetwork} Network</strong> to prevent loss of digital assets.
+                          </p>
+                          <p className="font-bold text-cyan-400">
+                             Minimum withdrawal: $10.00 USD.
+                          </p>
+                        </div>
                       </div>
                     </>
                   )}
@@ -506,14 +698,14 @@ export default function CashierModal({
             )}
 
             {apiError && (
-              <div className="rounded-md border border-red-200 bg-red-50 p-2.5 sm:p-3 text-[9px] sm:text-[10px] font-bold text-red-600">
+              <div id="cashier-api-error" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[10px] sm:text-xs font-bold text-red-500 dark:text-red-400 leading-relaxed">
                 {apiError}
               </div>
             )}
 
             {paymentMethod === 'paybill' && (
               <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-4">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
                   <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
                     M-Pesa Lipa Na Paybill
                   </span>
@@ -532,10 +724,11 @@ export default function CashierModal({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <label htmlFor="mpesa-msg-area" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     Option A: Paste M-Pesa Confirmation Message
                   </label>
                   <textarea
+                    id="mpesa-msg-area"
                     value={mpesaMessage}
                     onChange={(e) => setMpesaMessage(e.target.value)}
                     placeholder="Paste the message here (e.g. QXJ7... Confirmed. Ksh...)"
@@ -544,10 +737,11 @@ export default function CashierModal({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <label htmlFor="mpesa-screenshot-file" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     Option B: Upload Payment Receipt (Screenshot)
                   </label>
                   <input
+                    id="mpesa-screenshot-file"
                     type="file"
                     accept="image/*"
                     onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
@@ -564,21 +758,39 @@ export default function CashierModal({
               </div>
             )}
 
-
+            {/* Dynamic Bottom Submit Button */}
             <button
+              id="cashier-submit-trigger"
               type="submit"
-              disabled={isProcessing}
-              className="flex w-full items-center justify-center space-x-2 rounded bg-black text-white py-4 sm:py-3.5 font-bold hover:bg-gray-950 transition-all text-xs sm:text-xs uppercase tracking-wider cursor-pointer disabled:opacity-60"
+              disabled={isProcessing || isAddressLoading}
+              onClick={
+                activeTab === 'deposit' && paymentMethod === 'nowpayments' && !depositAddress 
+                  ? (e) => { e.preventDefault(); handleGenerateDepositAddress(); } 
+                  : undefined
+              }
+              className={`flex w-full items-center justify-center space-x-2 rounded py-4 sm:py-3.5 font-bold transition-all text-xs sm:text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 select-none ${
+                paymentMethod === 'paybill' 
+                  ? 'bg-green-600 text-white hover:bg-green-700' 
+                  : 'bg-cyan-500 text-slate-950 hover:bg-cyan-600 shadow-lg shadow-cyan-500/10'
+              }`}
             >
-              {isProcessing ? (
+              {isProcessing || isAddressLoading ? (
                 <>
                   <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />
-                  <span>{activeTab === 'deposit' ? 'Verifying Payment...' : 'Submitting Withdrawal...'}</span>
+                  <span>
+                    {isAddressLoading 
+                      ? 'Generating address...' 
+                      : activeTab === 'deposit' 
+                        ? 'Verifying Payment status...' 
+                        : 'Submitting request...'}
+                  </span>
                 </>
               ) : (
-                <span>{activeTab === 'deposit' 
-                  ? (paymentMethod === 'paybill' ? 'Upload & Notify Admin' : 'Verify Deposit') 
-                  : 'Dispatch Withdrawal'}</span>
+                <span>
+                  {activeTab === 'deposit' 
+                    ? (paymentMethod === 'paybill' ? 'Upload & Notify Admin' : (!depositAddress ? `Generate ${selectedCoin} Address` : 'Verify Blockchain Deposit')) 
+                    : 'Dispatch Withdrawal'}
+                </span>
               )}
             </button>
           </form>
