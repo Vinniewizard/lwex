@@ -1076,6 +1076,44 @@ Active technical indicator values: ${indicatorsString}.`}`;
     }
   });
 
+  // Admin endpoint - Update user details
+  app.post('/api/admin/users/update', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const adminKey = req.headers['x-admin-key'];
+      if (adminKey !== process.env.ADMIN_KEY && adminKey !== 'admin-secret-key') {
+        return res.status(403).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const { userId, email, fullName, demoBalance, realBalance, newPassword } = req.body;
+      if (!userId) {
+        return res.status(400).json({ success: false, message: 'User ID is required' });
+      }
+
+      const db = getD1Database();
+      
+      let query = 'UPDATE users SET email = ?, full_name = ?, demo_balance = ?, real_balance = ?';
+      const params: any[] = [email, fullName, demoBalance, realBalance];
+
+      if (newPassword && newPassword.trim() !== '') {
+        const crypto = require('crypto');
+        const passwordHash = crypto.createHash('sha256').update(newPassword).digest('hex');
+        query += ', password_hash = ?';
+        params.push(passwordHash);
+      }
+
+      query += ' WHERE id = ?';
+      params.push(userId);
+
+      await db.prepare(query).bind(...params).run();
+
+      return res.json({ success: true, message: 'User updated successfully' });
+    } catch (error: any) {
+      console.error('Update user error:', error);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // Admin endpoint - Get all users
   app.get('/api/admin/users', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');

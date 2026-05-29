@@ -53,6 +53,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
   const [pendingDeposits, setPendingDeposits] = useState<PendingDeposit[]>([]);
   const [gameSettings, setGameSettings] = useState<GameSettings>({ globalTrendBias: 0, volatilityMultiplier: 1 });
   const [isGameLoading, setIsGameLoading] = useState(false);
+  const [editingUser, setEditingUser] = useState<User & { newPassword?: string } | null>(null);
 
   const fetchData = async (key: string) => {
     setLoading(true);
@@ -83,6 +84,39 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
       alert('Failed to fetch data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateUserDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      const res = await fetch('/api/admin/users/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey
+        },
+        body: JSON.stringify({
+          userId: editingUser.id,
+          email: editingUser.email,
+          fullName: editingUser.fullName,
+          demoBalance: editingUser.demoBalance,
+          realBalance: editingUser.realBalance,
+          newPassword: editingUser.newPassword
+        })
+      });
+      if (res.ok) {
+        alert('User details updated successfully');
+        setEditingUser(null);
+        fetchData(adminKey);
+      } else {
+        const data = await res.json();
+        alert('Failed to update: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert('Failed to update user');
     }
   };
 
@@ -362,6 +396,7 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                           <th className="border p-3 text-right font-bold">Demo Balance</th>
                           <th className="border p-3 text-right font-bold">Real Balance</th>
                           <th className="border p-3 text-left font-bold">Created</th>
+                          <th className="border p-3 text-center font-bold">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -373,11 +408,98 @@ export default function AdminDashboard({ isOpen, onClose, theme }: AdminDashboar
                             <td className="border p-3 text-right font-mono">${user.demoBalance.toFixed(2)}</td>
                             <td className="border p-3 text-right font-mono">${user.realBalance.toFixed(2)}</td>
                             <td className="border p-3 text-xs">{new Date(user.createdAt).toLocaleDateString()}</td>
+                            <td className="border p-3 text-center">
+                              <button
+                                onClick={() => setEditingUser({ ...user, newPassword: '' })}
+                                className="bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-bold px-2 py-1 rounded text-[10px] uppercase transition-colors"
+                              >
+                                Edit
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Edit User Form/Modal Inline */}
+                  {editingUser && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                      <div className={`relative w-full max-w-md rounded-lg border p-6 shadow-2xl ${theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-gray-200'}`}>
+                        <button
+                          onClick={() => setEditingUser(null)}
+                          className="absolute right-4 top-4 rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <h3 className="text-lg font-bold mb-4 text-yellow-500">Edit User Details</h3>
+                        <form onSubmit={handleUpdateUserDetails} className="space-y-4">
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Email Address</label>
+                            <input
+                              type="email"
+                              value={editingUser.email}
+                              onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
+                              className={`w-full rounded px-3 py-2 text-sm border focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Full Name</label>
+                            <input
+                              type="text"
+                              value={editingUser.fullName}
+                              onChange={e => setEditingUser({ ...editingUser, fullName: e.target.value })}
+                              className={`w-full rounded px-3 py-2 text-sm border focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                              required
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Demo Balance</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editingUser.demoBalance}
+                                onChange={e => setEditingUser({ ...editingUser, demoBalance: parseFloat(e.target.value) || 0 })}
+                                className={`w-full rounded px-3 py-2 text-sm border font-mono focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Real Balance</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editingUser.realBalance}
+                                onChange={e => setEditingUser({ ...editingUser, realBalance: parseFloat(e.target.value) || 0 })}
+                                className={`w-full rounded px-3 py-2 text-sm border font-mono focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Reset Password <span className="lowercase normal-case font-normal">(Leave blank to keep current)</span></label>
+                            <input
+                              type="password"
+                              placeholder="Enter new password"
+                              value={editingUser.newPassword || ''}
+                              onChange={e => setEditingUser({ ...editingUser, newPassword: e.target.value })}
+                              className={`w-full rounded px-3 py-2 text-sm border focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                            />
+                          </div>
+                          <div className="pt-4">
+                            <button
+                              type="submit"
+                              className="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-bold py-2.5 rounded text-xs uppercase tracking-wider"
+                            >
+                              Save Changes
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

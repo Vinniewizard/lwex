@@ -73,6 +73,19 @@ export default function App() {
 
   const theme = themeMode === 'auto' ? systemTheme : themeMode;
 
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      if (theme === 'dark') {
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.remove('dark');
+        root.style.colorScheme = 'light';
+      }
+    }
+  }, [theme]);
+
   // Account states
   const [currentUser, setCurrentUser] = useState<any>(() => {
     const saved = localStorage.getItem('lwex_current_user');
