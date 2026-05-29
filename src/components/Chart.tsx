@@ -228,7 +228,22 @@ export default function Chart({
       rsiArray,
       candles,
     };
-  });
+  }, [
+    dimensions,
+    ticks,
+    activeContracts,
+    indicatorConfig,
+    localChartType,
+    zoomLevel,
+    asset,
+    isDark,
+    hoveredIndex,
+    mousePos,
+    smaArray,
+    emaArray,
+    rsiArray,
+    candles
+  ]);
 
   // Canvas Drawing Loop via requestAnimationFrame for butter-smooth animation
   useEffect(() => {

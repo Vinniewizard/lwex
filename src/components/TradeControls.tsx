@@ -36,6 +36,12 @@ export default function TradeControls({
   const [barrierOffset, setBarrierOffset] = useState<number>(0.5);
   const [targetDigit, setTargetDigit] = useState<number>(5);
 
+  const handleSelectTargetDigit = (d: number) => {
+    if (d >= 0 && d <= 9) {
+      setTargetDigit(d);
+    }
+  };
+
   const isDark = theme === 'dark';
 
   // Auto adjusting durations when changing units
@@ -87,6 +93,15 @@ export default function TradeControls({
       alert("Insufficient account funds or invalid stake size.");
       return;
     }
+    
+    // Validate target digit if contract type is digit-over-under
+    if (contractType === 'digit-over-under') {
+      if (typeof targetDigit !== 'number' || targetDigit < 0 || targetDigit > 9 || isNaN(targetDigit)) {
+        alert("Invalid target digit size. Correct range is 0 to 9.");
+        return;
+      }
+    }
+
     onPurchase({
       type: contractType,
       direction: dir,
@@ -197,7 +212,7 @@ export default function TradeControls({
             {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
               <button
                 key={d}
-                onClick={() => setTargetDigit(d)}
+                onClick={() => handleSelectTargetDigit(d)}
                 className={`rounded py-1.5 text-[10px] font-mono font-bold border transition-all cursor-pointer ${
                   targetDigit === d
                     ? isDark ? 'bg-teal-500 border-teal-500 text-slate-950 shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-black border-black text-white'
@@ -475,7 +490,7 @@ export default function TradeControls({
                 <span className="text-xs font-extrabold uppercase tracking-wider">
                   DIGIT OVER ▲
                 </span>
-                <span className={`text-[9px] ${isDark ? 'text-slate-950 font-bold' : 'text-purple-100'}`}>Last digit {'>'} {targetDigit}</span>
+                <span className={`text-[9px] ${isDark ? 'text-slate-950 font-bold' : 'text-purple-100'}`}>Last digit &gt; {targetDigit}</span>
               </div>
               <div className="text-right font-mono font-bold text-xs">
                 ${payoutPotential.toFixed(2)}
@@ -485,13 +500,13 @@ export default function TradeControls({
             {/* BUY UNDER BUTTON */}
             <button
               onClick={() => initiatePurchase('under')}
-              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 border shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-white' : 'bg-purple-800 hover:bg-purple-900 text-white'}`}
+              className={`group flex w-full items-center justify-between rounded-md py-3 px-4 border shadow-sm transition-all cursor-pointer font-sans ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-750 text-white' : 'bg-purple-800 hover:bg-purple-900 text-white'}`}
             >
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold uppercase tracking-wider">
                   DIGIT UNDER ▼
                 </span>
-                <span className={`text-[9px] ${isDark ? 'text-slate-300' : 'text-purple-100'}`}>Last digit {'<'} {targetDigit}</span>
+                <span className={`text-[9px] ${isDark ? 'text-slate-300' : 'text-purple-100'}`}>Last digit &lt; {targetDigit}</span>
               </div>
               <div className="text-right font-mono font-bold text-xs">
                 ${payoutPotential.toFixed(2)}
