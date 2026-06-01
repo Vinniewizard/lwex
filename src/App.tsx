@@ -160,82 +160,7 @@ export default function App() {
   // Keep track of asset selector state
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
 
-  // Sync account and balance when currentUser changes (Login/Logout event) and periodically
-  useEffect(() => {
-    let syncInterval: any;
 
-    const syncUserBalance = async () => {
-      if (!currentUser || !currentUser.token) return;
-      try {
-        const res = await fetch('/api/users/me', {
-          headers: { 'Authorization': `Bearer ${currentUser.id}` } // We just use currentUser.id as pseudo-token since the API expects an id in the bearer token
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.user) {
-            const demoBal = Number(data.user.demo_balance) || 0;
-            const realBal = Number(data.user.real_balance) || 0;
-            setRealAccountBalance(realBal);
-            setAccount(prev => ({
-              ...prev,
-              balance: prev.mode === 'demo' ? demoBal : realBal,
-            }));
-            // Update localstorage user to have latest demo and real balances
-            setCurrentUser((prevUser: any) => {
-              if (prevUser) {
-                const updated = { ...prevUser, demo_balance: demoBal, real_balance: realBal };
-                localStorage.setItem('lwex_current_user', JSON.stringify(updated));
-                return updated;
-              }
-              return prevUser;
-            });
-          }
-        }
-      } catch (err) {}
-    };
-
-    if (currentUser) {
-      setAccount(prev => {
-        const isDefaultReal = true;
-        // If they just logged in, we override to REAL by default unless otherwise handled.
-        // We only reset mode if we are switching to a completely new user
-        if (prev.id !== `m-ac-${currentUser.id}`) {
-          const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
-          return {
-            ...prev,
-            mode: 'real',
-            balance: userRealBal,
-            id: `m-ac-${currentUser.id}`
-          };
-        }
-        return {
-          ...prev,
-          id: `m-ac-${currentUser.id}`
-        };
-      });
-
-      const startRealUserBalance = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
-      setRealAccountBalance(startRealUserBalance);
-      
-      // Initial fetch to ensure devices are correctly synced
-      syncUserBalance();
-      // Poll every 10 seconds for cross-device syncs
-      syncInterval = setInterval(syncUserBalance, 10000);
-    } else {
-      // Logged out: fallback to demo mode with demo wallet balance
-      setAccount(prev => ({
-        ...prev,
-        mode: 'demo',
-        balance: 10000.00,
-        id: 'demo-temp-acc'
-      }));
-      setRealAccountBalance(0.00);
-    }
-
-    return () => {
-      if (syncInterval) clearInterval(syncInterval);
-    };
-  }, [currentUser?.id]);
 
   // Layout states
   const [activeTabView, setActiveTabView] = useState<'trade' | 'history' | 'stats'>('trade');
@@ -333,43 +258,116 @@ export default function App() {
 
   const prevAccountIdRef = useRef<string>(initialAccountId);
 
-  // Sync state to current account's details when active session or account changes
+  // Sync account details, active contracts portfolio, trade history, price alerts, and balance atomically when currentUser changes (Login/Logout event)
   useEffect(() => {
-    const currentId = account.id;
-    const prevId = prevAccountIdRef.current;
-    
-    if (currentId !== prevId) {
-      const savedContracts = localStorage.getItem(`lwex_active_contracts_${currentId}`);
-      const savedHistory = localStorage.getItem(`lwex_history_${currentId}`);
-      const savedAlerts = localStorage.getItem(`lwex_price_alerts_${currentId}`);
+    let syncInterval: any;
 
-      let nextContracts: Contract[] = [];
-      let nextHistory: TradeHistoryItem[] = [];
-      let nextAlerts: PriceAlert[] = [];
+    const syncUserBalance = async () => {
+      if (!currentUser) return;
+      try {
+        const res = await fetch('/api/users/me', {
+          headers: { 'Authorization': `Bearer ${currentUser.id}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.user) {
+            const demoBal = Number(data.user.demo_balance) || 0;
+            const realBal = Number(data.user.real_balance) || 0;
+            setRealAccountBalance(realBal);
+            setAccount(prev => ({
+              ...prev,
+              balance: prev.mode === 'demo' ? demoBal : realBal,
+            }));
+            // Update localstorage user to have latest demo and real balances
+            setCurrentUser((prevUser: any) => {
+              if (prevUser) {
+                const updated = { ...prevUser, demo_balance: demoBal, real_balance: realBal };
+                localStorage.setItem('lwex_current_user', JSON.stringify(updated));
+                return updated;
+              }
+              return prevUser;
+            });
+          }
+        }
+      } catch (err) {}
+    };
 
-      if (savedContracts) {
-        try {
-          nextContracts = JSON.parse(savedContracts);
-        } catch (e) {}
-      }
-      if (savedHistory) {
-        try {
-          nextHistory = JSON.parse(savedHistory);
-        } catch (e) {}
-      }
-      if (savedAlerts) {
-        try {
-          nextAlerts = JSON.parse(savedAlerts);
-        } catch (e) {}
-      }
+    // 1. Calculate the target Account ID
+    const nextAccountId = currentUser ? `m-ac-${currentUser.id}` : 'demo-temp-acc';
 
-      setActiveContracts(nextContracts);
-      setTradeHistory(nextHistory);
-      setPriceAlerts(nextAlerts);
+    // 2. Load the stored data for this account synchronously
+    const savedContracts = localStorage.getItem(`lwex_active_contracts_${nextAccountId}`);
+    const savedHistory = localStorage.getItem(`lwex_history_${nextAccountId}`);
+    const savedAlerts = localStorage.getItem(`lwex_price_alerts_${nextAccountId}`);
 
-      prevAccountIdRef.current = currentId;
+    let nextContracts: Contract[] = [];
+    let nextHistory: TradeHistoryItem[] = [];
+    let nextAlerts: PriceAlert[] = [];
+
+    if (savedContracts) {
+      try {
+        nextContracts = JSON.parse(savedContracts);
+      } catch (e) {}
     }
-  }, [account.id]);
+    if (savedHistory) {
+      try {
+        nextHistory = JSON.parse(savedHistory);
+      } catch (e) {}
+    }
+    if (savedAlerts) {
+      try {
+        nextAlerts = JSON.parse(savedAlerts);
+      } catch (e) {}
+    }
+
+    // 3. Immediately set state for portfolios
+    setActiveContracts(nextContracts);
+    setTradeHistory(nextHistory);
+    setPriceAlerts(nextAlerts);
+
+    // 4. Update the account and real balance states
+    if (currentUser) {
+      setAccount(prev => {
+        const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
+        if (prev.id !== nextAccountId) {
+          return {
+            ...prev,
+            mode: 'real',
+            balance: userRealBal,
+            id: nextAccountId
+          };
+        }
+        return {
+          ...prev,
+          id: nextAccountId
+        };
+      });
+
+      const startRealUserBalance = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
+      setRealAccountBalance(startRealUserBalance);
+      
+      // Initial fetch to ensure devices are correctly synced
+      syncUserBalance();
+      // Poll every 10 seconds for cross-device syncs
+      syncInterval = setInterval(syncUserBalance, 10000);
+    } else {
+      // Logged out: fallback to demo mode with demo wallet balance
+      setAccount(prev => ({
+        ...prev,
+        mode: 'demo',
+        balance: 10000.00,
+        id: nextAccountId
+      }));
+      setRealAccountBalance(0.00);
+    }
+
+    // Update the ref right away
+    prevAccountIdRef.current = nextAccountId;
+
+    return () => {
+      if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [currentUser?.id]);
 
   // Limit/Market Trade inputs
   const [spotPriceLimit, setSpotPriceLimit] = useState<number>(activeAsset.price);
@@ -427,10 +425,16 @@ export default function App() {
   // Persist state changes in account-specific partitions
   useEffect(() => {
     localStorage.setItem('lwex_account', JSON.stringify(account));
-    localStorage.setItem(`lwex_history_${account.id}`, JSON.stringify(tradeHistory));
-    localStorage.setItem(`lwex_active_contracts_${account.id}`, JSON.stringify(activeContracts));
+    
+    // Only write data if they belong together and match the current account ID
+    // This blocks the race condition during login/logout transitions
+    if (account.id === prevAccountIdRef.current) {
+      localStorage.setItem(`lwex_history_${account.id}`, JSON.stringify(tradeHistory));
+      localStorage.setItem(`lwex_active_contracts_${account.id}`, JSON.stringify(activeContracts));
+      localStorage.setItem(`lwex_price_alerts_${account.id}`, JSON.stringify(priceAlerts));
+    }
+    
     localStorage.setItem('lwex_real_balance', String(realAccountBalance));
-    localStorage.setItem(`lwex_price_alerts_${account.id}`, JSON.stringify(priceAlerts));
     if (currentUser) {
       localStorage.setItem('lwex_current_user', JSON.stringify(currentUser));
       localStorage.removeItem('lwex_logged_out');
