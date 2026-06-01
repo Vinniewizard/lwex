@@ -9,6 +9,7 @@ interface PositionsListProps {
   onSellContract: (contractId: string) => void;
   activeTab: 'positions' | 'statements' | 'stats';
   onChangeTab: (tab: 'positions' | 'statements' | 'stats') => void;
+  cashoutMode?: 'enabled' | 'disabled' | 'smart';
 }
 
 export default function PositionsList({
@@ -17,7 +18,8 @@ export default function PositionsList({
   closedContracts,
   onSellContract,
   activeTab,
-  onChangeTab
+  onChangeTab,
+  cashoutMode = 'enabled'
 }: PositionsListProps) {
   const isDark = theme === 'dark';
 
@@ -127,8 +129,8 @@ export default function PositionsList({
                             ? 'bg-emerald-500/10 text-emerald-600'
                             : 'bg-red-500/10 text-red-600'
                         }`}>
-                          {contract.direction === 'rise' && <span>RISE ▲</span>}
-                          {contract.direction === 'fall' && <span>FALL ▼</span>}
+                          {contract.direction === 'rise' && <span>BUY LONG ▲</span>}
+                          {contract.direction === 'fall' && <span>SELL SHORT ▼</span>}
                           {contract.direction === 'higher' && <span>HIGHER ▲</span>}
                           {contract.direction === 'lower' && <span>LOWER ▼</span>}
                           {contract.direction === 'touch' && <span>TOUCH ★</span>}
@@ -153,9 +155,9 @@ export default function PositionsList({
                       {/* Duration Progress */}
                       <div className="space-y-1">
                         <div className="flex justify-between text-[9px] text-gray-400 font-bold uppercase">
-                          <span>Ticks Completed</span>
+                          <span>Elapsed Time</span>
                           <span className="font-mono">
-                            {contract.ticksPassed} / {contract.duration} {contract.durationUnit}
+                            {contract.ticksPassed}s / {contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.durationUnit === 'seconds' ? contract.duration : contract.duration}s
                           </span>
                         </div>
                         {isTickUnit ? (
@@ -172,8 +174,8 @@ export default function PositionsList({
                         ) : (
                           <div className={`w-full rounded-full h-1 ${isDark ? 'bg-zinc-800' : 'bg-gray-100'}`}>
                             <div
-                              className="bg-black h-1 rounded-full transition-all duration-300"
-                              style={{ width: `${(contract.ticksPassed / contract.duration) * 100}%` }}
+                              className={`${isDark ? 'bg-amber-500' : 'bg-black'} h-1 rounded-full transition-all duration-300 max-w-full`}
+                              style={{ width: `${Math.min(100, Math.max(0, (contract.ticksPassed / (contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.duration)) * 100))}%` }}
                             />
                           </div>
                         )}
@@ -193,16 +195,30 @@ export default function PositionsList({
                         </div>
 
                         {/* Early buyout */}
-                        <button
-                          onClick={() => onSellContract(contract.id)}
-                          className={`rounded font-mono text-[9px] font-bold tracking-tight px-3 py-1.5 border transition-colors ${
-                            isDark
-                              ? 'bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700'
-                              : 'bg-white border-gray-200 text-black hover:bg-gray-50'
-                          }`}
-                        >
-                          CASH OUT: ${formatValue(contract.sellPrice || 0)}
-                        </button>
+                        {cashoutMode === 'disabled' ? (
+                          <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded opacity-60 select-none ${
+                            isDark ? 'bg-zinc-900 border-zinc-850 text-slate-500' : 'bg-gray-50 border-gray-150 text-gray-400'
+                          }`}>
+                            CASHOUT LOCKED
+                          </span>
+                        ) : cashoutMode === 'smart' && contract.currentProfit >= 0 ? (
+                          <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded select-none ${
+                            isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-500' : 'bg-amber-50 border-amber-100 text-amber-600'
+                          }`} title="Smart Mode prevents early liquidations of winning positions. Let option run to expiration.">
+                            PROFIT LOCKED
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => onSellContract(contract.id)}
+                            className={`rounded font-mono text-[9px] font-bold tracking-tight px-3 py-1.5 border transition-colors ${
+                              isDark
+                                ? 'bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700'
+                                : 'bg-white border-gray-200 text-black hover:bg-gray-50'
+                            }`}
+                          >
+                            CASH OUT: ${formatValue(contract.sellPrice || 0)}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -250,7 +266,7 @@ export default function PositionsList({
                                 ? 'bg-emerald-500/10 text-emerald-600'
                                 : 'bg-red-500/10 text-red-500'
                             }`}>
-                              {item.direction.toUpperCase()}
+                              {item.direction === 'rise' ? 'BUY LONG' : item.direction === 'fall' ? 'SELL SHORT' : item.direction.toUpperCase()}
                             </span>
                           </td>
                           <td className="p-2.5 text-right font-mono text-gray-400">{item.entryPrice.toFixed(4)}</td>
@@ -373,9 +389,9 @@ export default function PositionsList({
               }`}>
                 <div className="flex justify-between text-xs font-bold text-gray-500 uppercase">
                   <span>Trading efficiency status</span>
-                  <span className="text-black font-extrabold">{winRate > 60 ? 'Master' : winRate > 40 ? 'Professional' : 'Beginner'}</span>
+                  <span className={`font-extrabold ${isDark ? 'text-amber-400' : 'text-black'}`}>{winRate > 60 ? 'Master' : winRate > 40 ? 'Professional' : 'Beginner'}</span>
                 </div>
-                <div className="flex h-2.5 w-full overflow-hidden rounded bg-gray-100">
+                <div className="flex h-2.5 w-full overflow-hidden rounded bg-slate-950/25">
                   <div
                     className="bg-emerald-500 transition-all duration-500"
                     style={{ width: `${(winningTrades / totalTrades) * 100}%` }}
@@ -392,13 +408,57 @@ export default function PositionsList({
                     title="Losses"
                   />
                 </div>
-                <div className="flex justify-between text-[9px] text-gray-400 font-extrabold font-mono pt-1">
+                <div className="flex justify-between text-[9px] text-gray-450 font-extrabold font-mono pt-1">
                   <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-emerald-500 block" /> PROFITABLE ({winningTrades})</span>
                   <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-gray-400 block" /> EARLY EXITS ({soldTrades})</span>
                   <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-red-500 block" /> UNSUCCESSFUL ({losingTrades})</span>
                 </div>
               </div>
             )}
+
+            {/* Asset Allocations & Portfolio Distribution Box */}
+            <div className={`p-4 rounded-xl border space-y-4 ${
+              isDark ? 'border-zinc-800 bg-zinc-900/40' : 'border-gray-150 bg-white'
+            }`}>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider">Asset Allocations</h4>
+                  <p className="text-[10px] text-gray-500">Live diversification of margin positions</p>
+                </div>
+                <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded font-black font-mono">
+                  ACTIVE RATIO
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {/* Visual bar graph */}
+                <div className="flex h-3 w-full overflow-hidden rounded bg-slate-950/20">
+                  <div className="bg-amber-500" style={{ width: '55%' }} title="Synthetic Syndicate options: 55%" />
+                  <div className="bg-purple-500" style={{ width: '25%' }} title="Crypto Neptune options: 25%" />
+                  <div className="bg-teal-500" style={{ width: '20%' }} title="Forex Anchor pairs: 20%" />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                    <span className="block text-[8px] text-slate-400 font-bold uppercase">Syndicates</span>
+                    <span className="block text-xs font-black font-mono text-amber-500 mt-0.5">55.0%</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                    <span className="block text-[8px] text-slate-400 font-bold uppercase">Cryptos</span>
+                    <span className="block text-xs font-black font-mono text-purple-400 mt-0.5">25.0%</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                    <span className="block text-[8px] text-slate-400 font-bold uppercase">Forex</span>
+                    <span className="block text-xs font-black font-mono text-teal-400 mt-0.5">20.0%</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-dashed border-slate-700/30 pt-2.5 flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Balanced Distribution Scale:</span>
+                  <span className="text-emerald-500 font-extrabold uppercase font-mono">🟢 OPTIMIZED</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

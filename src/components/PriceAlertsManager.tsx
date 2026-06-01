@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, BellRing, Trash2, ArrowUpCircle, ArrowDownCircle, AlertCircle } from 'lucide-react';
+import { Bell, BellRing, Trash2, ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Asset, PriceAlert } from '../types';
 
 interface PriceAlertsManagerProps {
   theme: 'dark' | 'light';
   activeAsset: Asset;
+  assetsRegistry?: Asset[];
   priceAlerts: PriceAlert[];
   onAddAlert: (targetPrice: number, condition: 'above' | 'below') => void;
   onDeleteAlert: (id: string) => void;
@@ -14,6 +15,7 @@ interface PriceAlertsManagerProps {
 export default function PriceAlertsManager({
   theme,
   activeAsset,
+  assetsRegistry,
   priceAlerts,
   onAddAlert,
   onDeleteAlert
@@ -21,6 +23,25 @@ export default function PriceAlertsManager({
   const isDark = theme === 'dark';
   const [alertPrice, setAlertPrice] = useState<string>('');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
+
+  // Keep track of stable previous prices to calculate tick trends
+  const [prevPrices, setPrevPrices] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const registry = assetsRegistry || [activeAsset];
+    setPrevPrices((prev) => {
+      const next = { ...prev };
+      registry.forEach((asset) => {
+        if (next[asset.id] === undefined) {
+          next[asset.id] = asset.price;
+        } else if (next[asset.id] !== asset.price) {
+          next[asset.id + '_prev'] = next[asset.id];
+          next[asset.id] = asset.price;
+        }
+      });
+      return next;
+    });
+  }, [assetsRegistry, activeAsset]);
 
   // Sync input value with current active price whenever asset changes
   useEffect(() => {
@@ -184,13 +205,37 @@ export default function PriceAlertsManager({
             ) : (
               [...activeAssetAlerts, ...otherAssetsAlerts].map((alert) => {
                 const isCurrent = alert.assetId === activeAsset.id;
+                const asset = (assetsRegistry || [activeAsset]).find(a => a.id === alert.assetId) || activeAsset;
+                const currentPrice = asset.price;
+                const prevPrice = prevPrices[asset.id + '_prev'] ?? currentPrice;
+
+                let approachState: 'approaching' | 'retreating' | 'stable' = 'stable';
+                if (currentPrice !== prevPrice) {
+                  if (alert.condition === 'above') {
+                    approachState = currentPrice > prevPrice ? 'approaching' : 'retreating';
+                  } else if (alert.condition === 'below') {
+                    approachState = currentPrice < prevPrice ? 'approaching' : 'retreating';
+                  }
+                }
+
+                let proximity = 0;
+                if (alert.condition === 'above') {
+                  proximity = currentPrice >= alert.targetPrice ? 100 : (currentPrice / alert.targetPrice) * 100;
+                } else if (alert.condition === 'below') {
+                  proximity = currentPrice <= alert.targetPrice ? 100 : (alert.targetPrice / currentPrice) * 100;
+                }
+                proximity = Math.max(0, Math.min(100, proximity));
+
+                // We can check if highly imminent (e.g. proximity >= 98.5% and not triggered)
+                const isImminent = !alert.isTriggered && proximity >= 98.5;
+
                 return (
                   <motion.div
                     key={alert.id}
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className={`flex items-center justify-between p-2 rounded-lg border text-xs transition-all ${
+                    className={`flex items-center justify-between p-2.5 rounded-lg border text-xs transition-all ${
                       alert.isTriggered
                         ? isDark
                           ? 'bg-emerald-950/20 border-emerald-900/30 text-emerald-300 opacity-80'
@@ -205,28 +250,64 @@ export default function PriceAlertsManager({
                     }`}
                   >
                     <div className="flex-1 min-w-0 pr-2">
-                      <div className="flex items-center space-x-1.5">
-                        <span className="font-bold uppercase text-[9px] truncate">
-                          {alert.assetSymbol}
-                        </span>
-                        {!isCurrent && (
-                          <span className="text-[7.5px] font-mono px-1 py-[0.5px] rounded border border-gray-800/30 bg-slate-500/5 text-gray-400 text-[8px]">
-                            Other
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5 min-w-0">
+                          <span className="font-bold uppercase text-[9.5px] truncate text-slate-300">
+                            {alert.assetSymbol}
                           </span>
-                        )}
-                        {alert.isTriggered && (
-                          <span className="text-[8px] bg-emerald-500/10 text-emerald-400 font-bold px-1 py-[0.5px] rounded animate-pulse uppercase">
-                            Triggered
-                          </span>
+                          {!isCurrent && (
+                            <span className="text-[7px] font-mono px-1 py-[0.5px] rounded border border-slate-800/40 bg-slate-500/5 text-gray-400 uppercase">
+                              other
+                            </span>
+                          )}
+                          {alert.isTriggered ? (
+                            <span className="text-[7px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 font-bold px-1 py-[0.2px] rounded uppercase">
+                              Triggered
+                            </span>
+                          ) : isImminent ? (
+                            <span className="text-[7px] bg-amber-500/15 border border-amber-500/35 text-amber-400 font-bold px-1 py-[0.2px] rounded animate-pulse uppercase">
+                              Imminent
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Live interactive trend / proximity arrow */}
+                        {!alert.isTriggered && (
+                          <div className="flex items-center space-x-1 text-[8.5px]">
+                            {approachState === 'approaching' && (
+                              <span className="text-emerald-400 bg-emerald-500/10 px-1 py-[0.5px] rounded-sm font-bold flex items-center space-x-0.5 animate-pulse">
+                                {alert.condition === 'above' ? <TrendingUp className="h-2.5 w-2.5 stroke-[2.5]" /> : <TrendingDown className="h-2.5 w-2.5 stroke-[2.5]" />}
+                                <span className="text-[7px] uppercase font-black tracking-tighter">Approaching</span>
+                              </span>
+                            )}
+                            {approachState === 'retreating' && (
+                              <span className="text-gray-500 font-medium px-1 py-[0.5px] rounded-sm flex items-center space-x-0.5">
+                                <span className="text-[7px] uppercase font-bold tracking-tighter">Retreating</span>
+                              </span>
+                            )}
+                            <span className={`font-mono font-bold px-1 py-[0.5px] rounded-sm border text-[8px] ${
+                              isImminent 
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+                                : 'bg-slate-550/5 text-gray-400 border-transparent'
+                            }`}>
+                              {proximity.toFixed(1)}% close
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center space-x-1 text-[10px] font-mono mt-0.5">
-                        <span className={alert.condition === 'above' ? 'text-green-500 font-bold' : 'text-red-500 font-bold'}>
-                          {alert.condition === 'above' ? '≥' : '≤'}
-                        </span>
-                        <span className="font-bold text-[11px]">
-                          {alert.targetPrice}
-                        </span>
+
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="flex items-center space-x-1 text-[9.5px] font-mono">
+                          <span className={alert.condition === 'above' ? 'text-green-500 font-bold text-[8px]' : 'text-red-500 font-bold text-[8px]'}>
+                            {alert.condition === 'above' ? 'GOES ABOVE ≥' : 'GOES BELOW ≤'}
+                          </span>
+                          <span className="font-bold text-[10.5px] text-slate-300">
+                            {alert.targetPrice.toLocaleString(undefined, { minimumFractionDigits: asset.decimals })}
+                          </span>
+                        </div>
+                        <div className="text-[8px] text-gray-450 font-mono">
+                          Live: ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: asset.decimals })}
+                        </div>
                       </div>
                     </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, Phone, ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 interface AuthModalProps {
@@ -6,12 +6,26 @@ interface AuthModalProps {
   onClose: () => void;
   theme: 'light' | 'dark';
   onSuccess: (user: any) => void;
+  initialView?: 'login' | 'register' | 'forgot_password' | 'reset_password';
 }
 
 type AuthView = 'login' | 'register' | 'forgot_password' | 'reset_password';
 
-export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialView }: AuthModalProps) {
   const [view, setView] = useState<AuthView>('login');
+
+  useEffect(() => {
+    if (isOpen && initialView) {
+      setView(initialView);
+      if (initialView === 'reset_password') {
+        const savedToken = localStorage.getItem('pending_reset_token');
+        if (savedToken) {
+          setResetToken(savedToken);
+          localStorage.removeItem('pending_reset_token');
+        }
+      }
+    }
+  }, [isOpen, initialView]);
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [formError, setFormError] = useState('');
@@ -33,17 +47,21 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
     setIsLoading(true);
     
     if (view === 'register') {
-      // Phone number should be exactly 10 starting with either 254 or 07
-      if (!/^(07\d{8}|254\d{7})$/.test(phone)) {
-        setFormError('Phone number must be exactly 10 digits starting with 254 or 07.');
+      // Clean the phone number by removing spaces, hyphens, plus signs, and brackets
+      const cleanPhone = phone.replace(/[\s\-\+\(\)]/g, '');
+      if (!/^\d{9,15}$/.test(cleanPhone)) {
+        setFormError('Please enter a valid phone number (9 to 15 digits).');
         setIsLoading(false);
         return;
       }
 
+      const params = new URLSearchParams(window.location.search);
+      const referredBy = params.get('ref');
+
       fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, phone, password, fullName: email.split('@')[0], country })
+        body: JSON.stringify({ email, phone, password, fullName: email.split('@')[0], country, referredBy })
       })
       .then(async (res) => {
         const data = await res.json();
@@ -292,7 +310,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess }: AuthMod
                           ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
                           : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                       } border`}
-                      placeholder="+1 (555) 000-0000"
+                      placeholder="e.g. +254 712 345 678"
                     />
                   </div>
                 </div>

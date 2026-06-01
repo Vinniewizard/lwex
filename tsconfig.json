@@ -28,6 +28,7 @@
     "dist",
     "functions",
     "worker",
-    "server.ts"
+    "temp-repo",
+    "temp-repo2"
   ]
 }

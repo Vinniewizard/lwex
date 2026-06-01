@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ZoomIn, ZoomOut, LineChart, BarChart2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, LineChart, BarChart2, Maximize2, Minimize2, X } from 'lucide-react';
 import { Asset, Tick, Contract, IndicatorConfig } from '../types';
 
 interface ChartProps {
@@ -35,6 +35,9 @@ export default function Chart({
   // State for hover-tooltip states
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [inactivityCountdown, setInactivityCountdown] = useState<number | null>(null);
+  const scaleMetricsRef = useRef({ adjustedMin: 0, adjustedPriceRange: 1, mainChartHeight: 300 });
 
   // 1. Calculate SMA Array
   const smaPeriod = indicatorConfig.sma.period;
@@ -135,6 +138,91 @@ export default function Chart({
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
+  }, []);
+
+  // Listen for Escape key to exit fullscreen mode
+  useEffect(() => {
+    if (!isFullScreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullScreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullScreen]);
+
+  // Full-screen inactivity auto-close timer (60 seconds)
+  useEffect(() => {
+    if (!isFullScreen) {
+      setInactivityCountdown(null);
+      return;
+    }
+
+    const INACTIVITY_LIMIT_MS = 60 * 1000;
+    const WARNING_THRESHOLD_MS = 15 * 1000;
+    
+    let activityTimeout: NodeJS.Timeout;
+    let countdownInterval: NodeJS.Timeout;
+    let secondsLeft = 60;
+
+    const resetInactivityTimer = () => {
+      clearTimeout(activityTimeout);
+      clearInterval(countdownInterval);
+      setInactivityCountdown(null);
+      secondsLeft = 60;
+
+      activityTimeout = setTimeout(() => {
+        setIsFullScreen(false);
+      }, INACTIVITY_LIMIT_MS);
+
+      let elapsed = 0;
+      countdownInterval = setInterval(() => {
+        elapsed += 1000;
+        if (elapsed >= (INACTIVITY_LIMIT_MS - WARNING_THRESHOLD_MS)) {
+          secondsLeft = Math.max(0, Math.ceil((INACTIVITY_LIMIT_MS - elapsed) / 1000));
+          setInactivityCountdown(secondsLeft);
+        }
+      }, 1000);
+    };
+
+    resetInactivityTimer();
+
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    events.forEach(event => {
+      window.addEventListener(event, resetInactivityTimer);
+    });
+
+    return () => {
+      clearTimeout(activityTimeout);
+      clearInterval(countdownInterval);
+      events.forEach(event => {
+        window.removeEventListener(event, resetInactivityTimer);
+      });
+    };
+  }, [isFullScreen]);
+
+  // Native listener for smooth mouse scroll wheel zooming over the chart container
+  useEffect(() => {
+    const parent = containerRef.current;
+    if (!parent) return;
+
+    const handleWheelZoom = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomStep = 5;
+      if (e.deltaY < 0) {
+        // Scroll Up -> Zoom In (Fewer ticks shown, closer view)
+        setZoomLevel((prev) => Math.max(prev - zoomStep, 15));
+      } else {
+        // Scroll Down -> Zoom Out (More ticks shown, wider context)
+        setZoomLevel((prev) => Math.min(prev + zoomStep, 200));
+      }
+    };
+
+    parent.addEventListener('wheel', handleWheelZoom, { passive: false });
+    return () => {
+      parent.removeEventListener('wheel', handleWheelZoom);
+    };
   }, []);
 
   // Compute Candles from Ticks for the candlestick view
@@ -333,6 +421,9 @@ export default function Chart({
       const adjustedMin = minPrice - padding;
       const adjustedMax = maxPrice + padding;
       const adjustedPriceRange = adjustedMax - adjustedMin;
+
+      // Store current metrics in ref for floating cursor label mapping
+      scaleMetricsRef.current = { adjustedMin, adjustedPriceRange, mainChartHeight };
 
       // Pricing coordinate mapping helptool
       const getX = (index: number, total: number) => {
@@ -551,10 +642,10 @@ export default function Chart({
           ctx.lineTo(x, showRSI ? height : mainChartHeight);
           ctx.stroke();
 
-          // Horizontal line snapping to current price
+          // Horizontal line tracking exact mouse position
           ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(width - 75, y);
+          ctx.moveTo(0, mousePos.y);
+          ctx.lineTo(width - 75, mousePos.y);
           ctx.stroke();
 
           ctx.setLineDash([]); // Reset line dash
@@ -793,14 +884,14 @@ export default function Chart({
             <button
               onClick={handleZoomIn}
               className={`rounded p-1 transition-all cursor-pointer ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/40' : 'text-gray-400 hover:text-black'}`}
-              title="Zoom In"
+              title="Zoom In [Scroll Wheel Up on Chart]"
             >
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={handleZoomOut}
               className={`rounded p-1 transition-all cursor-pointer ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/40' : 'text-gray-400 hover:text-black'}`}
-              title="Zoom Out"
+              title="Zoom Out [Scroll Wheel Down on Chart]"
             >
               <ZoomOut className="h-3.5 w-3.5" />
             </button>
@@ -809,9 +900,58 @@ export default function Chart({
       </div>
 
       {/* Canvas Frame Container */}
-      <div id="chart-parent" ref={containerRef} className={`relative flex-1 w-full rounded-md overflow-hidden ${
-        isDark ? 'bg-slate-950/40 border border-slate-800/40' : 'bg-gray-50/30'
-      }`}>
+      <div 
+        id="chart-parent" 
+        ref={containerRef} 
+        className={`${
+          isFullScreen 
+            ? 'fixed inset-0 z-50 h-screen w-screen p-6 flex flex-col' 
+            : 'relative flex-1 w-full rounded-md overflow-hidden'
+        } ${
+          isDark ? 'bg-slate-950 border border-slate-800/40' : 'bg-gray-50/30 border border-gray-100'
+        }`}
+      >
+        {/* Full-Screen Controls Row */}
+        <div className="absolute top-4 right-4 z-50 flex items-center space-x-2">
+          {isFullScreen && inactivityCountdown !== null && (
+            <div className="animate-pulse bg-red-600/90 border border-red-500/30 text-white rounded-lg px-3 py-1.5 flex items-center space-x-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider shadow-lg">
+              <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+              <span>Inactivity exit in {inactivityCountdown}s</span>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.dispatchEvent(new Event('mousemove'));
+                }}
+                className="bg-white/20 hover:bg-white/40 text-white px-2 py-0.5 rounded text-[9px] cursor-pointer transition-colors font-bold uppercase"
+              >
+                Keep Open
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className={`rounded-lg p-2 sm:px-3 sm:py-2 transition-all cursor-pointer shadow-lg border flex items-center space-x-2 ${
+              isFullScreen
+                ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 font-semibold'
+                : isDark 
+                  ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800' 
+                  : 'bg-white border-gray-200 text-slate-500 hover:text-black hover:bg-gray-50'
+            }`}
+            title={isFullScreen ? "Close Full-Screen View [ESC]" : "Enter Full-Screen"}
+          >
+            {isFullScreen ? (
+              <>
+                <X className="h-4 w-4 stroke-[2.5]" />
+                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Close Chart</span>
+                <kbd className="text-[9px] px-1.5 bg-red-800/80 text-white/90 rounded border border-red-400/40 font-mono hidden sm:inline">ESC</kbd>
+              </>
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+
         <canvas
           id="drawing-surface"
           ref={canvasRef}
@@ -819,6 +959,38 @@ export default function Chart({
           onMouseLeave={handleMouseLeave}
           style={{ width: '100%', height: '100%', display: 'block' }}
         />
+
+        {/* Synchronized floating cursor crosshair label */}
+        {hoveredIndex !== null && mousePos && ticks[hoveredIndex] && (() => {
+          const { adjustedMin, adjustedPriceRange, mainChartHeight } = scaleMetricsRef.current;
+          let hoverPriceCursor = ticks[hoveredIndex].price;
+          if (mousePos.y <= mainChartHeight && mainChartHeight > 40) {
+            const fraction = (mainChartHeight - mousePos.y - 20) / (mainChartHeight - 40);
+            hoverPriceCursor = adjustedMin + adjustedPriceRange * fraction;
+          }
+          return (
+            <div
+              className={`absolute pointer-events-none rounded-md px-2 py-1 text-[10px] uppercase font-mono border shadow-md font-bold z-50 flex flex-col space-y-0.5 whitespace-nowrap leading-none ${
+                isDark
+                  ? 'border-violet-500 bg-slate-900 border-opacity-40 text-violet-300 shadow-slate-950/50'
+                  : 'border-indigo-200 bg-white/95 text-indigo-700 shadow-slate-200/40'
+              }`}
+              style={{
+                left: `${Math.min(mousePos.x + 15, dimensions.width - 150)}px`,
+                top: `${Math.min(mousePos.y - 45, dimensions.height - 45)}px`,
+              }}
+            >
+              <div className="flex items-center space-x-1.5">
+                <span className="text-gray-400">PRICE:</span>
+                <span className={isDark ? "text-violet-400" : "text-indigo-600"}>${hoverPriceCursor.toFixed(asset.decimals)}</span>
+              </div>
+              <div className="flex items-center space-x-1.5 text-[9px] opacity-85">
+                <span className="text-gray-400">TIME:</span>
+                <span>{new Date(ticks[hoveredIndex].time).toLocaleTimeString()}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Dynamic Tooltip Overlay */}
         {hoveredIndex !== null && mousePos && ticks[hoveredIndex] && (

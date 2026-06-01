@@ -10,6 +10,7 @@ interface CashierModalProps {
   onWithdraw: (amount: number) => void;
   currentUser?: any;
   theme: 'dark' | 'light';
+  gameSettings?: any;
 }
 
 type PaymentMethod = 'nowpayments' | 'paybill';
@@ -31,7 +32,8 @@ export default function CashierModal({
   onDeposit,
   onWithdraw,
   currentUser,
-  theme
+  theme,
+  gameSettings
 }: CashierModalProps) {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
   const [amount, setAmount] = useState<number>(100);
@@ -51,12 +53,16 @@ export default function CashierModal({
   const [paymentStatus, setPaymentStatus] = useState<string>('');
   const [sandboxReason, setSandboxReason] = useState<string>('');
   const [isPolling, setIsPolling] = useState(false);
+  const [copiedType, setCopiedType] = useState<'address' | 'tag' | 'amount' | null>(null);
   
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
   const [withdrawalHistory, setWithdrawalHistory] = useState<any[]>([]);
   const [historyTab, setHistoryTab] = useState<'deposits' | 'withdrawals'>('deposits');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  const isPaybillAllowed = gameSettings?.paybillEnabled !== false;
+  const isBtcAllowed = gameSettings?.btcEnabled !== false;
 
   const isKenya = currentUser?.country?.toLowerCase() === 'kenya';
   const isCryptoRoute = paymentMethod === 'nowpayments';
@@ -65,38 +71,82 @@ export default function CashierModal({
   useEffect(() => {
     if (isOpen) {
       if (currentUser?.country?.toLowerCase() === 'kenya') {
-        setPaymentMethod('paybill');
+        if (isPaybillAllowed) {
+          setPaymentMethod('paybill');
+        } else if (isBtcAllowed) {
+          setPaymentMethod('nowpayments');
+        }
       } else {
-        setPaymentMethod('nowpayments');
+        if (isBtcAllowed) {
+          setPaymentMethod('nowpayments');
+        } else if (isPaybillAllowed) {
+          setPaymentMethod('paybill');
+        }
       }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, isPaybillAllowed, isBtcAllowed]);
 
-  // Synchronize limits and clear states when tab changes
+  // Load persistent pending deposit if exists for current user
+  useEffect(() => {
+    if (isOpen) {
+      const userId = currentUser?.id || currentUser?.email || account.id;
+      if (userId) {
+        const stored = localStorage.getItem(`lwex_pending_deposit_${userId}`);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.address && parsed.paymentId) {
+              setDepositAddress({
+                address: parsed.address,
+                paymentId: parsed.paymentId,
+                amount: parsed.amount,
+                tag: parsed.tag || undefined
+              });
+              if (parsed.usdAmount) setAmount(parsed.usdAmount);
+              if (parsed.coin) {
+                setSelectedCoin(parsed.coin);
+                if (parsed.coin === 'BTC') setSelectedNetwork('BTC');
+                else if (parsed.coin === 'ETH') setSelectedNetwork('ETH');
+                else if (parsed.coin === 'USDTTRC20') setSelectedNetwork('TRX');
+                else if (parsed.coin === 'USDT') setSelectedNetwork('ETH');
+              }
+              if (parsed.sandboxReason) {
+                setSandboxReason(parsed.sandboxReason);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to restore active pending deposit session:', e);
+          }
+        }
+      }
+    }
+  }, [isOpen, currentUser, account?.id]);
+
+  // Reset tab-specific fields when tab changes
   useEffect(() => {
     setApiError('');
     setSuccessMsg('');
-    setDepositAddress(null);
-    setSandboxReason('');
+  }, [activeTab]);
+
+  // Synchronize limits without clearing the generated deposit Address
+  useEffect(() => {
+    const minD = gameSettings?.minDeposit ?? 1;
+    const minW = gameSettings?.minWithdrawal ?? 10;
     
     if (activeTab === 'deposit') {
-      if (amount < 1) setAmount(10);
+      if (amount < minD) setAmount(minD);
     } else {
-      if (amount < 10) setAmount(10);
+      if (amount < minW) setAmount(minW);
     }
-  }, [activeTab]);
+  }, [activeTab, gameSettings?.minDeposit, gameSettings?.minWithdrawal]);
 
   const handleAmountChange = (val: number) => {
     setAmount(val);
-    setDepositAddress(null);
-    setSandboxReason('');
     setApiError('');
   };
 
   const handleCoinChange = (coin: string) => {
     setSelectedCoin(coin);
-    setDepositAddress(null);
-    setSandboxReason('');
     setApiError('');
     if (coin === 'BTC') setSelectedNetwork('BTC');
     else if (coin === 'ETH') setSelectedNetwork('ETH');
@@ -105,8 +155,9 @@ export default function CashierModal({
   };
 
   const handleGenerateDepositAddress = async () => {
-    if (amount < 1) {
-      setApiError('The minimum deposit is $1 USD.');
+    const minD = gameSettings?.minDeposit ?? 1;
+    if (amount < minD) {
+      setApiError(`The minimum deposit is $${minD} USD.`);
       return;
     }
 
@@ -133,11 +184,27 @@ export default function CashierModal({
         throw new Error(data.message || 'Unable to generate deposit address.');
       }
 
-      setDepositAddress({
+      const generatedObj = {
         address: data.address,
         paymentId: data.payment_id,
-        amount: data.amount
-      });
+        amount: data.amount,
+        tag: data.tag || undefined
+      };
+
+      setDepositAddress(generatedObj);
+
+      if (userId) {
+        localStorage.setItem(`lwex_pending_deposit_${userId}`, JSON.stringify({
+          address: data.address,
+          paymentId: data.payment_id,
+          amount: data.amount,
+          tag: data.tag || '',
+          usdAmount: amount,
+          coin: selectedCoin,
+          network: selectedNetwork,
+          sandboxReason: (data.isSandbox && data.sandboxReason) ? data.sandboxReason : ''
+        }));
+      }
 
       if (data.isSandbox && data.sandboxReason) {
         setSandboxReason(data.sandboxReason);
@@ -177,6 +244,9 @@ export default function CashierModal({
           setSuccessMsg(`Deposit successful! $${creditedAmount.toLocaleString()} has been credited to your wallet.`);
           setDepositAddress(null);
           setSandboxReason('');
+          if (userId) {
+            localStorage.removeItem(`lwex_pending_deposit_${userId}`);
+          }
         } else {
           if (data.status) {
             setPaymentStatus(data.status);
@@ -237,13 +307,16 @@ export default function CashierModal({
     e.preventDefault();
     if (amount <= 0) return;
 
-    if (activeTab === 'deposit' && amount < 1) {
-      setApiError('The minimum deposit amount is $1 USD.');
+    const minD = gameSettings?.minDeposit ?? 1;
+    const minW = gameSettings?.minWithdrawal ?? 10;
+
+    if (activeTab === 'deposit' && amount < minD) {
+      setApiError(`The minimum deposit amount is $${minD} USD.`);
       return;
     }
 
-    if (activeTab === 'withdraw' && amount < 10) {
-      setApiError('The minimum withdrawal amount is $10 USD.');
+    if (activeTab === 'withdraw' && amount < minW) {
+      setApiError(`The minimum withdrawal amount is $${minW} USD.`);
       return;
     }
 
@@ -316,6 +389,11 @@ export default function CashierModal({
         const creditedAmount = Number(data.creditedAmount) || amount;
         onDeposit(creditedAmount);
         setSuccessMsg(`Deposit successful! $${creditedAmount.toLocaleString()} has been credited to your wallet.`);
+        setDepositAddress(null);
+        setSandboxReason('');
+        if (userId) {
+          localStorage.removeItem(`lwex_pending_deposit_${userId}`);
+        }
       } else {
         if (!targetAddress.trim()) {
           throw new Error('Enter the receiving wallet address.');
@@ -586,9 +664,14 @@ export default function CashierModal({
           <form id="cashier-action-form" onSubmit={handleSubmit} className="space-y-4">
             {/* Amount input block */}
             <div className="space-y-1.5">
-              <label htmlFor="cashier-amount-input" className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase block tracking-wider">
-                USD Amount requested
-              </label>
+              <div className="flex justify-between items-end">
+                <label htmlFor="cashier-amount-input" className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase block tracking-wider">
+                  USD Amount requested
+                </label>
+                <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-widest bg-yellow-500/10 px-1.5 py-0.5 rounded">
+                  Min: ${activeTab === 'deposit' ? (gameSettings?.minDeposit ?? 1) : (gameSettings?.minWithdrawal ?? 10)} USD
+                </span>
+              </div>
               <div className={`flex rounded-md border items-center px-3 focus-within:border-yellow-500 min-h-12 sm:min-h-11 transition-colors ${
                 theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}>
@@ -596,16 +679,28 @@ export default function CashierModal({
                 <input
                   id="cashier-amount-input"
                   type="number"
-                  min={activeTab === 'deposit' ? 1 : 10}
+                  min={activeTab === 'deposit' ? (gameSettings?.minDeposit ?? 1) : (gameSettings?.minWithdrawal ?? 10)}
                   max={50000}
                   disabled={activeTab === 'deposit' && depositAddress !== null}
-                  value={amount}
-                  onChange={(e) => handleAmountChange(Math.max(0, parseInt(e.target.value) || 0))}
+                  value={amount === 0 ? '' : amount}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value);
+                    handleAmountChange(isNaN(parsed) ? 0 : parsed);
+                  }}
+                  onBlur={() => {
+                    const minD = gameSettings?.minDeposit ?? 1;
+                    const minW = gameSettings?.minWithdrawal ?? 10;
+                    const minLimit = activeTab === 'deposit' ? minD : minW;
+                    if (amount < minLimit) {
+                      setAmount(minLimit);
+                      setApiError(`Amount automatically set to the minimum limit of $${minLimit} USD.`);
+                    }
+                  }}
                   className="w-full bg-transparent font-mono text-base sm:text-sm font-bold focus:outline-none text-current"
                 />
               </div>
               <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 font-bold">
-                <span>{activeTab === 'deposit' ? 'Minimum deposit is $1 USD' : 'Minimum withdrawal is $10 USD'}</span>
+                <span>{activeTab === 'deposit' ? `Minimum deposit is $${gameSettings?.minDeposit ?? 1} USD` : `Minimum withdrawal is $${gameSettings?.minWithdrawal ?? 10} USD`}</span>
                 {activeTab === 'deposit' && depositAddress !== null && (
                   <span className="text-yellow-500 animate-pulse font-mono">Amount locked for instructions</span>
                 )}
@@ -615,57 +710,78 @@ export default function CashierModal({
             {/* Quick Presets Grid */}
             {(!depositAddress || activeTab === 'withdraw') && (
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-                {(activeTab === 'deposit' ? [10, 25, 100, 250] : [20, 50, 250, 1000]).map((val) => (
-                  <button
-                    id={`cashier-preset-${val}`}
-                    type="button"
-                    key={val}
-                    onClick={() => handleAmountChange(val)}
-                    className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
-                      amount === val
-                        ? 'bg-yellow-500 text-slate-950 border-yellow-500'
-                        : theme === 'dark'
-                          ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    ${val}
-                  </button>
-                ))}
+                {(() => {
+                  const minLimit = activeTab === 'deposit' ? (gameSettings?.minDeposit ?? 1) : (gameSettings?.minWithdrawal ?? 10);
+                  const rawPresets = activeTab === 'deposit' ? [10, 25, 100, 250] : [20, 50, 250, 1000];
+                  // Snap presets dynamically to at least the minimum, and keep them unique
+                  const uniquePresets = Array.from(new Set(rawPresets.map(preset => Math.max(minLimit, preset))));
+                  
+                  return uniquePresets.map((val) => (
+                    <button
+                      id={`cashier-preset-${val}`}
+                      type="button"
+                      key={val}
+                      onClick={() => handleAmountChange(val)}
+                      className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
+                        amount === val
+                          ? 'bg-yellow-500 text-slate-950 border-yellow-500'
+                          : theme === 'dark'
+                            ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      ${val}
+                    </button>
+                  ));
+                })()}
               </div>
             )}
 
             {/* Kenya Paybill vs NOWPayments select bar */}
-            {isKenya && !depositAddress && (
+            {isKenya && !depositAddress && (isPaybillAllowed || isBtcAllowed) && (
               <div className="space-y-1.5 pt-1.5 border-t border-slate-850 dark:border-slate-800/60">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Select payment route
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    id="cashier-route-mpesa"
-                    type="button"
-                    onClick={() => selectPaymentMethod('paybill')}
-                    className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
-                      paymentMethod === 'paybill' ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
-                    }`}
-                  >
-                    <DollarSign className="h-5 w-5" />
-                    <span className="text-[10px] font-black">{activeTab === 'deposit' ? 'M-Pesa Paybill' : 'M-Pesa'}</span>
-                  </button>
+                  {isPaybillAllowed && (
+                    <button
+                      id="cashier-route-mpesa"
+                      type="button"
+                      onClick={() => selectPaymentMethod('paybill')}
+                      className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                        paymentMethod === 'paybill' ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
+                      }`}
+                    >
+                      <DollarSign className="h-5 w-5" />
+                      <span className="text-[10px] font-black">{activeTab === 'deposit' ? 'M-Pesa Paybill' : 'M-Pesa'}</span>
+                    </button>
+                  )}
 
-                  <button
-                    id="cashier-route-crypto"
-                    type="button"
-                    onClick={() => selectPaymentMethod('nowpayments')}
-                    className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
-                      paymentMethod === 'nowpayments' ? 'border-yellow-500 text-yellow-500 bg-yellow-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
-                    }`}
-                  >
-                    <RefreshCw className="h-5 w-5" />
-                    <span className="text-[10px] font-black">NOWPayments</span>
-                  </button>
+                  {isBtcAllowed && (
+                    <button
+                      id="cashier-route-crypto"
+                      type="button"
+                      onClick={() => selectPaymentMethod('nowpayments')}
+                      className={`rounded-lg border p-3.5 sm:p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                        paymentMethod === 'nowpayments' ? 'border-yellow-500 text-yellow-500 bg-yellow-500/10' : 'border-slate-850 text-slate-400 hover:bg-slate-900'
+                      }`}
+                    >
+                      <RefreshCw className="h-5 w-5" />
+                      <span className="text-[10px] font-black">BTC Deposit</span>
+                    </button>
+                  )}
                 </div>
+              </div>
+            )}
+
+            {!isPaybillAllowed && !isBtcAllowed && activeTab === 'deposit' && (
+              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-center space-y-2">
+                <Shield className="h-8 w-8 text-red-500 mx-auto" />
+                <h4 className="text-xs font-bold text-red-400">Deposits Temporarily Disabled</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Online deposits are currently disabled for maintenance. Please get assistance from support or try again later.
+                </p>
               </div>
             )}
 
@@ -747,7 +863,7 @@ export default function CashierModal({
                           <button
                             id="cashier-generate-address-btn"
                             type="button"
-                            disabled={isAddressLoading}
+                            disabled={isAddressLoading || amount < (gameSettings?.minDeposit ?? 1)}
                             onClick={handleGenerateDepositAddress}
                             className="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-black text-xs uppercase tracking-widest py-3 px-4 rounded-lg transition-all cursor-pointer shadow-lg shadow-yellow-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                           >
@@ -790,16 +906,20 @@ export default function CashierModal({
                                   onClick={() => {
                                     if (depositAddress?.address) {
                                       navigator.clipboard.writeText(depositAddress.address);
-                                      setSuccessMsg('Address copied to clipboard!');
-                                      setTimeout(() => setSuccessMsg(''), 2000);
+                                      setCopiedType('address');
+                                      setTimeout(() => setCopiedType(null), 2000);
                                     }
                                   }}
-                                  className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+                                  className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1 flex items-center justify-center min-w-8 min-h-8"
                                   title="Copy Wallet Address"
                                 >
-                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                  </svg>
+                                  {copiedType === 'address' ? (
+                                    <span className="text-[10px] text-green-400 font-bold uppercase animate-pulse">Copied</span>
+                                  ) : (
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                  )}
                                 </button>
                               </div>
                             </div>
@@ -819,16 +939,20 @@ export default function CashierModal({
                                     onClick={() => {
                                       if (depositAddress?.tag) {
                                         navigator.clipboard.writeText(depositAddress.tag);
-                                        setSuccessMsg('Memo copied to clipboard!');
-                                        setTimeout(() => setSuccessMsg(''), 2000);
+                                        setCopiedType('tag');
+                                        setTimeout(() => setCopiedType(null), 2000);
                                       }
                                     }}
-                                    className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+                                    className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1 flex items-center justify-center min-w-8 min-h-8"
                                     title="Copy Memo"
                                   >
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                    </svg>
+                                    {copiedType === 'tag' ? (
+                                      <span className="text-[10px] text-green-400 font-bold uppercase animate-pulse">Copied</span>
+                                    ) : (
+                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                      </svg>
+                                    )}
                                   </button>
                                 </div>
                               </div>
@@ -849,16 +973,20 @@ export default function CashierModal({
                                   onClick={() => {
                                     if (depositAddress?.amount) {
                                       navigator.clipboard.writeText(String(depositAddress.amount));
-                                      setSuccessMsg('Amount copied to clipboard!');
-                                      setTimeout(() => setSuccessMsg(''), 2000);
+                                      setCopiedType('amount');
+                                      setTimeout(() => setCopiedType(null), 2000);
                                     }
                                   }}
-                                  className="text-slate-400 hover:text-yellow-400 transition-all cursor-pointer p-0.5"
+                                  className="text-slate-400 hover:text-yellow-400 transition-all cursor-pointer p-0.5 flex items-center justify-center min-w-8 min-h-8"
                                   title="Copy Amount"
                                 >
-                                  <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                  </svg>
+                                  {copiedType === 'amount' ? (
+                                    <span className="text-[10px] text-green-400 font-bold uppercase animate-pulse">Copied</span>
+                                  ) : (
+                                    <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                    </svg>
+                                  )}
                                 </button>
                               </div>
                               <p className="text-[9px] text-slate-400 font-medium">
@@ -890,7 +1018,7 @@ export default function CashierModal({
                           {/* Info footer */}
                           <div className="space-y-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                             <p>
-                              Send funds using any cryptocurrency exchange or personal wallet. Direct account settings and billing links can be checked on <a href="https://account.nowpayments.io/" target="_blank" rel="noopener noreferrer" className="text-yellow-500 underline hover:text-yellow-400 font-bold">account.nowpayments.io</a>.
+                              Send funds using any cryptocurrency exchange or personal wallet.
                             </p>
                             <p className="font-bold text-slate-600 dark:text-slate-300">
                               Once successfully sent, click the 'Verify Blockchain Deposit' button below to automatically check confirms and credit your exchange balance immediately!
@@ -904,10 +1032,14 @@ export default function CashierModal({
                             onClick={() => {
                               setDepositAddress(null);
                               setSandboxReason('');
+                              const userId = currentUser?.id || currentUser?.email || account.id;
+                              if (userId) {
+                                localStorage.removeItem(`lwex_pending_deposit_${userId}`);
+                              }
                             }}
                             className="w-full bg-slate-905 hover:bg-slate-800 text-slate-400 dark:text-slate-300 border border-slate-800/60 text-[10px] uppercase font-bold py-2 rounded-md transition-colors cursor-pointer"
                           >
-                            Enter Different Amount / Start Over
+                            Enter Different Amount / Start Over / Discard Request
                           </button>
                         </div>
                       )}
@@ -1048,7 +1180,7 @@ export default function CashierModal({
             <button
               id="cashier-submit-trigger"
               type="submit"
-              disabled={isProcessing || isAddressLoading}
+              disabled={isProcessing || isAddressLoading || (activeTab === 'deposit' && !depositAddress && paymentMethod === 'nowpayments' && amount < (gameSettings?.minDeposit ?? 1))}
               onClick={
                 activeTab === 'deposit' && paymentMethod === 'nowpayments' && !depositAddress 
                   ? (e) => { e.preventDefault(); handleGenerateDepositAddress(); } 
