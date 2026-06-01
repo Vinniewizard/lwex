@@ -69,6 +69,8 @@ function getSqliteInstance() {
     try { rawDb.exec("ALTER TABLE users ADD COLUMN max_win_limit REAL DEFAULT 0.00"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN max_loss_limit REAL DEFAULT 0.00"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
 
     rawDb.exec(`
       CREATE TABLE IF NOT EXISTS user_sessions (
@@ -308,6 +310,8 @@ function getD1Database() {
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_win_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_loss_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT '';
+          ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+          ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Crypto';
 
           CREATE TABLE IF NOT EXISTS user_sessions (
             session_id TEXT PRIMARY KEY,
@@ -600,6 +604,9 @@ interface CashierLedger {
     minDeposit?: number;
     minWithdrawal?: number;
     cashoutMode?: 'enabled' | 'disabled' | 'smart';
+    payoutRate?: number;
+    minStake?: number;
+    maxStake?: number;
   };
 }
 
@@ -2710,7 +2717,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       const db = getD1Database();
       const depositsRes = await db.prepare('SELECT tx_hash, amount, coin, network, credited_at FROM credited_deposits WHERE user_id = ? ORDER BY credited_at DESC').bind(userId).all();
       
-      const withdrawalsRes = await db.prepare('SELECT id, amount, coin, network, status, created_at, payment_method, address FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all();
+      const withdrawalsRes = await db.prepare('SELECT withdraw_order_id, amount, coin, network, status, requested_at, payment_method, address FROM withdrawals WHERE user_id = ? ORDER BY requested_at DESC').bind(userId).all();
       
       const deposits = (depositsRes?.results || []).map((row: any) => ({
         type: 'deposit',
@@ -2723,13 +2730,13 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       const withdrawals = (withdrawalsRes?.results || []).map((row: any) => ({
         type: 'withdrawal',
-        id: row.id,
+        id: row.withdraw_order_id,
         amount: row.amount,
         coin: row.coin,
         network: row.network,
-        status: row.status,
-        date: row.created_at,
-        paymentMethod: row.payment_method,
+        status: row.status || 'pending',
+        date: row.requested_at,
+        paymentMethod: row.payment_method || 'Crypto',
         address: row.address
       }));
 
@@ -2862,7 +2869,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
         return res.status(403).json({ success: false, message: 'Unauthorized' });
       }
 
-      const { userId, email, fullName, demoBalance, realBalance, newPassword, forceOutcome, profitTarget, maxWinLimit, maxLossLimit } = req.body;
+      const { userId, email, fullName, demoBalance, realBalance, newPassword, forceOutcome, profitTarget, maxWinLimit, maxLossLimit, verificationStatus } = req.body;
       if (!userId) {
         return res.status(400).json({ success: false, message: 'User ID is required' });
       }
@@ -2883,6 +2890,20 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       await db.prepare(query).bind(...params).run();
 
+      if (verificationStatus) {
+        const profile = await db.prepare("SELECT user_id FROM user_profiles WHERE user_id = ?").bind(userId).first();
+        const now = new Date().toISOString();
+        if (profile) {
+          await db.prepare("UPDATE user_profiles SET verification_status = ?, updated_at = ? WHERE user_id = ?")
+            .bind(verificationStatus, now, userId)
+            .run();
+        } else {
+          await db.prepare("INSERT INTO user_profiles (user_id, verification_status, created_at, updated_at) VALUES (?, ?, ?, ?)")
+            .bind(userId, verificationStatus, now, now)
+            .run();
+        }
+      }
+
       return res.json({ success: true, message: 'User updated successfully' });
     } catch (error: any) {
       console.error('Update user error:', error);
@@ -2900,7 +2921,11 @@ Active technical indicator values: ${indicatorsString}.`}`;
       }
 
       const db = getD1Database();
-      const usersRes = await db.prepare('SELECT id, email, full_name, demo_balance, real_balance, created_at, force_outcome, profit_target, max_win_limit, max_loss_limit, last_login, plain_password FROM users').all();
+      const usersRes = await db.prepare(`
+        SELECT u.id, u.email, u.full_name, u.demo_balance, u.real_balance, u.created_at, u.force_outcome, u.profit_target, u.max_win_limit, u.max_loss_limit, u.last_login, u.plain_password, p.verification_status 
+        FROM users u 
+        LEFT JOIN user_profiles p ON u.id = p.user_id
+      `).all();
       const users = (usersRes?.results || []).map((u: any) => ({
         id: u.id,
         email: u.email,
@@ -2913,7 +2938,8 @@ Active technical indicator values: ${indicatorsString}.`}`;
         maxLossLimit: u.max_loss_limit || 0.00,
         createdAt: u.created_at,
         lastLogin: u.last_login,
-        plainPassword: u.plain_password || ''
+        plainPassword: u.plain_password || '',
+        verificationStatus: u.verification_status || 'unverified'
       }));
 
       return res.json({
@@ -2993,17 +3019,17 @@ Active technical indicator values: ${indicatorsString}.`}`;
         creditedAt: row.credited_at
       }));
 
-      const withdrawalsRes = await db.prepare("SELECT * FROM withdrawals ORDER BY created_at DESC LIMIT 50").all();
+      const withdrawalsRes = await db.prepare("SELECT * FROM withdrawals ORDER BY requested_at DESC LIMIT 50").all();
       const withdrawals = (withdrawalsRes?.results || []).map((row: any) => ({
-        id: row.id,
+        id: row.withdraw_order_id,
         userId: row.user_id,
         amount: row.amount,
         address: row.address,
         coin: row.coin,
         network: row.network,
-        status: row.status,
-        createdAt: row.created_at,
-        paymentMethod: row.payment_method
+        status: row.status || 'pending',
+        createdAt: row.requested_at,
+        paymentMethod: row.payment_method || 'Crypto'
       }));
 
       return res.json({ success: true, pendingDeposits, completedDeposits, withdrawals });
@@ -3089,6 +3115,51 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       return res.json({ success: true, message: `Deposit ${action}d successfully.` });
     } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Admin endpoint - Approve/Decline withdrawal
+  app.post('/api/admin/process-withdrawal', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const adminKey = req.headers['x-admin-key'];
+      if (adminKey !== process.env.ADMIN_KEY && adminKey !== 'admin-secret-key') {
+        return res.status(403).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const { withdrawalId, action } = req.body; // action: 'approve' | 'decline'
+      if (!withdrawalId || !action) {
+        return res.status(400).json({ success: false, message: 'Withdrawal ID and action are required.' });
+      }
+
+      const db = getD1Database();
+      const withdrawal = await db.prepare("SELECT * FROM withdrawals WHERE withdraw_order_id = ?").bind(withdrawalId).first();
+      if (!withdrawal) {
+        return res.status(404).json({ success: false, message: 'Withdrawal record not found.' });
+      }
+
+      const currentStatus = withdrawal.status || 'pending';
+      if (currentStatus !== 'pending') {
+        return res.status(400).json({ success: false, message: `Withdrawal has already been processed: ${currentStatus}` });
+      }
+
+      const now = new Date().toISOString();
+
+      if (action === 'approve') {
+        // Just mark as paid/approved
+        await db.prepare("UPDATE withdrawals SET status = 'paid' WHERE withdraw_order_id = ?").bind(withdrawalId).run();
+      } else {
+        // Decline withdrawal: mark as declined and Refund the amount to the user's real balance
+        await db.prepare("UPDATE withdrawals SET status = 'declined' WHERE withdraw_order_id = ?").bind(withdrawalId).run();
+        await db.prepare("UPDATE users SET real_balance = real_balance + ?, updated_at = ? WHERE id = ?")
+          .bind(withdrawal.amount, now, withdrawal.user_id)
+          .run();
+      }
+
+      return res.json({ success: true, message: `Withdrawal has been successfully ${action === 'approve' ? 'paid' : 'declined and refunded'}.` });
+    } catch (error: any) {
+      console.error('Error processing withdrawal:', error);
       return res.status(500).json({ success: false, message: error.message });
     }
   });
@@ -3191,7 +3262,10 @@ Active technical indicator values: ${indicatorsString}.`}`;
           btcEnabled: ledger.gameSettings?.btcEnabled !== false,
           minDeposit: ledger.gameSettings?.minDeposit ?? 1.00,
           minWithdrawal: ledger.gameSettings?.minWithdrawal ?? 10.00,
-          cashoutMode: ledger.gameSettings?.cashoutMode || 'enabled'
+          cashoutMode: ledger.gameSettings?.cashoutMode || 'enabled',
+          payoutRate: ledger.gameSettings?.payoutRate !== undefined ? ledger.gameSettings?.payoutRate : 95.5,
+          minStake: ledger.gameSettings?.minStake !== undefined ? ledger.gameSettings?.minStake : 1,
+          maxStake: ledger.gameSettings?.maxStake !== undefined ? ledger.gameSettings?.maxStake : 5000
         },
         userSegment,
         userOverride

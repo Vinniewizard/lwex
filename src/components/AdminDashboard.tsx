@@ -21,6 +21,7 @@ interface User {
   maxLossLimit?: number;
   createdAt: string;
   lastLogin?: string;
+  verificationStatus?: string;
 }
 
 interface Stats {
@@ -79,6 +80,7 @@ interface GameSettings {
   minStake?: number;
   maxStake?: number;
   cashoutMode?: 'enabled' | 'disabled' | 'smart';
+  payoutRate?: number;
 }
 
 const PREBUILT_GUIDES = {
@@ -117,7 +119,8 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     minWithdrawal: 10,
     minStake: 1,
     maxStake: 5000,
-    cashoutMode: 'enabled'
+    cashoutMode: 'enabled',
+    payoutRate: 95.5
   });
   const [isGameLoading, setIsGameLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<User & { newPassword?: string } | null>(null);
@@ -163,6 +166,8 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
   // --- REFACTOR CONFIRM DIALOG STATES ---
   const [confirmingDepositId, setConfirmingDepositId] = useState<string | null>(null);
   const [confirmingDepositAction, setConfirmingDepositAction] = useState<'approve' | 'decline' | null>(null);
+  const [confirmingWithdrawalId, setConfirmingWithdrawalId] = useState<string | null>(null);
+  const [confirmingWithdrawalAction, setConfirmingWithdrawalAction] = useState<'approve' | 'decline' | null>(null);
 
   // --- TELEGRAM CAMPAIGNS & ADV HUNTER UI STATES ---
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -515,7 +520,8 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
           forceOutcome: editingUser.forceOutcome || '',
           profitTarget: editingUser.profitTarget || 0,
           maxWinLimit: editingUser.maxWinLimit || 0,
-          maxLossLimit: editingUser.maxLossLimit || 0
+          maxLossLimit: editingUser.maxLossLimit || 0,
+          verificationStatus: editingUser.verificationStatus || 'unverified'
         })
       });
       if (res.ok) {
@@ -562,6 +568,39 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     } catch (error) {
       console.error('Error processing deposit:', error);
       triggerToast('Network error processing deposit.', false);
+    }
+  };
+
+  const handleProcessWithdrawal = async (id: string, action: 'approve' | 'decline', isConfirmed?: boolean) => {
+    if (!isConfirmed) {
+      setConfirmingWithdrawalId(id);
+      setConfirmingWithdrawalAction(action);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/process-withdrawal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey
+        },
+        body: JSON.stringify({ withdrawalId: id, action })
+      });
+
+      if (res.ok) {
+        setConfirmingWithdrawalId(null);
+        setConfirmingWithdrawalAction(null);
+        // Refresh all administrative data
+        fetchData(adminKey);
+        triggerToast(`Withdrawal has been successfully ${action === 'approve' ? 'approved' : 'declined and refunded'}.`, true);
+      } else {
+        const errData = await res.json();
+        triggerToast(errData.message || 'Failed to process withdrawal', false);
+      }
+    } catch (err: any) {
+      console.error('Error processing withdrawal:', err);
+      triggerToast('Network error processing withdrawal.', false);
     }
   };
 
@@ -1207,6 +1246,19 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                                     </div>
                                     
                                     <div className="flex flex-wrap gap-1 mt-1.5">
+                                      {user.verificationStatus === 'verified' ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 leading-normal">
+                                          ✔ VERIFIED
+                                        </span>
+                                      ) : user.verificationStatus === 'rejected' ? (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 leading-normal">
+                                          ✖ REJECTED
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20 leading-normal">
+                                          ⏰ UNVERIFIED
+                                        </span>
+                                      )}
                                       {user.forceOutcome && (
                                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border leading-normal ${user.forceOutcome === 'win' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
                                           FORCED: {user.forceOutcome}
@@ -1378,6 +1430,18 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                             </div>
                           </div>
                           <div>
+                            <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Verification Status</label>
+                            <select
+                              value={editingUser.verificationStatus || 'unverified'}
+                              onChange={e => setEditingUser({ ...editingUser, verificationStatus: e.target.value })}
+                              className={`w-full rounded px-3 py-2 text-sm border focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
+                            >
+                              <option value="unverified">Unverified (Default)</option>
+                              <option value="verified">Verified (Approved)</option>
+                              <option value="rejected">Rejected / Blacklisted</option>
+                            </select>
+                          </div>
+                          <div>
                             <label className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Current Login Password</label>
                             <div className={`w-full rounded px-3 py-2 text-sm border font-mono select-all ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-yellow-500' : 'bg-gray-100 border-gray-300 text-yellow-700'}`}>
                               {editingUser.plainPassword || '(Unknown/Hashed)'}
@@ -1538,7 +1602,7 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                 </div>
               )}
 
-              {activeTab === 'withdrawals' && (
+               {activeTab === 'withdrawals' && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold">Withdrawals</h3>
                   {withdrawals.length === 0 ? (
@@ -1551,28 +1615,107 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                         <thead>
                           <tr className="bg-slate-900 border-b border-slate-800 text-[10px] uppercase text-slate-400 tracking-wider">
                             <th className="p-3 font-bold">User</th>
-                            <th className="p-3 font-bold text-right">Amount</th>
+                            <th className="p-3 font-bold text-right font-mono">Amount</th>
                             <th className="p-3 font-bold">Method</th>
                             <th className="p-3 font-bold">Destination</th>
                             <th className="p-3 font-bold">Status</th>
                             <th className="p-3 font-bold">Date</th>
+                            <th className="p-3 font-bold text-center">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {withdrawals.map(w => (
-                            <tr key={w.id} className="border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
-                              <td className="p-3 font-mono text-xs max-w-[150px] truncate">{w.userId}</td>
-                              <td className="p-3 text-right font-bold text-red-500">${w.amount}</td>
-                              <td className="p-3 text-xs uppercase">{w.paymentMethod || 'Crypto'} ({w.coin})</td>
-                              <td className="p-3 font-mono text-[10px] text-slate-500 max-w-[150px] truncate">{w.address}</td>
-                              <td className="p-3 text-[10px] font-bold uppercase">
-                                <span className={`px-2 py-1 rounded-full ${w.status === 'pending' ? 'bg-yellow-500/10 text-yellow-500 block w-max' : w.status === 'paid' ? 'bg-green-500/10 text-green-500 block w-max' : 'bg-slate-800 text-slate-400 block w-max'}`}>
-                                  {w.status}
-                                </span>
-                              </td>
-                              <td className="p-3 text-xs">{new Date(w.createdAt).toLocaleString()}</td>
-                            </tr>
-                          ))}
+                          {withdrawals.map(w => {
+                            const u = users.find(usr => usr.id === w.userId || usr.email === w.userId);
+                            return (
+                              <tr key={w.id} className="border-b border-slate-800/50 hover:bg-slate-900/30 transition-colors">
+                                <td className="p-3">
+                                  <div className="font-mono text-xs max-w-[150px] truncate">{w.userId}</div>
+                                  {u ? (
+                                    <div className="space-y-1 mt-1">
+                                      <div className="text-[10px] font-bold text-slate-400">{u.fullName}</div>
+                                      {u.verificationStatus === 'verified' ? (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 leading-normal">
+                                          ✔ VERIFIED KYC
+                                        </span>
+                                      ) : u.verificationStatus === 'rejected' ? (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 leading-normal">
+                                          ✖ KYC REJECTED
+                                        </span>
+                                      ) : (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20 leading-normal">
+                                          ⏰ UNVERIFIED
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[10px] text-slate-500 italic">User profile not preloaded</div>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right font-bold text-red-500 font-mono">${w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="p-3 text-xs uppercase">{w.paymentMethod || 'Crypto'} ({w.coin})</td>
+                                <td className="p-3 font-mono text-[10px] text-slate-500 max-w-[150px] truncate select-all" title={w.address}>{w.address}</td>
+                                <td className="p-3 text-[10px] font-bold uppercase">
+                                  <span className={`px-2 py-1 rounded-full ${w.status === 'pending' ? 'bg-yellow-500/10 text-yellow-500' : w.status === 'paid' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                    {w.status}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-xs">{new Date(w.createdAt).toLocaleString()}</td>
+                                <td className="p-3">
+                                  {w.status === 'pending' ? (
+                                    confirmingWithdrawalId === w.id ? (
+                                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-1.5 text-center space-y-1.5 min-w-[140px]">
+                                        <p className="text-[9px] font-bold text-yellow-400 uppercase">
+                                          Confirm {confirmingWithdrawalAction}?
+                                        </p>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => handleProcessWithdrawal(w.id, confirmingWithdrawalAction!, true)}
+                                            className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-black py-1 rounded text-[9px] uppercase border-none cursor-pointer"
+                                          >
+                                            Yes
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setConfirmingWithdrawalId(null);
+                                              setConfirmingWithdrawalAction(null);
+                                            }}
+                                            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-1 rounded text-[9px] uppercase border-none cursor-pointer"
+                                          >
+                                            No
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex gap-1.5 min-w-[140px]">
+                                        <button
+                                          onClick={() => {
+                                            setConfirmingWithdrawalId(w.id);
+                                            setConfirmingWithdrawalAction('approve');
+                                          }}
+                                          className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded text-[10px] uppercase border-none cursor-pointer"
+                                        >
+                                          Approve/Pay
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setConfirmingWithdrawalId(w.id);
+                                            setConfirmingWithdrawalAction('decline');
+                                          }}
+                                          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-[10px] uppercase border-none cursor-pointer"
+                                        >
+                                          Decline/Refund
+                                        </button>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block text-center italic">
+                                      Processed
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1641,6 +1784,22 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                           value={gameSettings.realWinRate ?? 30}
                           onChange={(e) => setGameSettings({...gameSettings, realWinRate: parseInt(e.target.value)})}
                           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] font-bold uppercase text-slate-400 font-mono tracking-wider">Trading Option Payout Yield</label>
+                          <span className="text-xs font-bold text-white">{gameSettings.payoutRate !== undefined ? gameSettings.payoutRate : 95.5}%</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="10"
+                          max="150"
+                          step="0.5"
+                          value={gameSettings.payoutRate !== undefined ? gameSettings.payoutRate : 95.5}
+                          onChange={(e) => setGameSettings({...gameSettings, payoutRate: parseFloat(e.target.value)})}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500"
                         />
                       </div>
 

@@ -327,6 +327,7 @@ export default function App() {
     minDeposit?: number;
     minWithdrawal?: number;
     cashoutMode?: 'enabled' | 'disabled' | 'smart';
+    payoutRate?: number;
   }>({
     globalTrendBias: 0,
     volatilityMultiplier: 1,
@@ -335,7 +336,8 @@ export default function App() {
     btcEnabled: true,
     minDeposit: 1,
     minWithdrawal: 10,
-    cashoutMode: 'enabled'
+    cashoutMode: 'enabled',
+    payoutRate: 95.5
   });
 
   const gameSettingsRef = useRef(gameSettings);
@@ -650,15 +652,12 @@ export default function App() {
   const handleSwitchAccount = (mode: 'demo' | 'real') => {
     if (mode === account.mode) return;
     setAccount((prev) => {
-      const oldBalance = prev.balance;
-      const targetBal = prev.mode === 'demo' ? oldBalance : account.balance;
-
-      if (prev.mode === 'demo') {
+      if (mode === 'real') {
         // Save demo balance, load real
         return { ...prev, mode: 'real', balance: realAccountBalance };
       } else {
         // Save real balance, load saved state or preset
-        setRealAccountBalance(oldBalance);
+        setRealAccountBalance(prev.balance);
         return { ...prev, mode: 'demo', balance: prev.balance === 0 ? 10000.00 : prev.balance };
       }
     });
@@ -1032,7 +1031,8 @@ export default function App() {
     const currentTickHistory = assetsTicksMap[activeAsset.id] || [];
     const latestPrice = currentTickHistory[currentTickHistory.length - 1]?.price || activeAsset.price;
 
-    const payoutRate = 0.955;
+    const ratePercentage = gameSettings.payoutRate !== undefined ? gameSettings.payoutRate : 95.5;
+    const payoutRate = ratePercentage / 100;
     const targetPayout = config.stake * (1 + payoutRate);
 
     // Compute Barrier level if offset is provided
@@ -1264,7 +1264,7 @@ export default function App() {
   };
 
   const handlePresetPercentage = (percentage: number) => {
-    setActiveInput('qty');
+    setActiveInput('usd');
     // Allocation based on Available balance instead of raw balance
     const activeStakesValue = activeContracts.reduce((sum, c) => sum + c.stake, 0);
     const freeBalVal = account.balance - activeStakesValue;
@@ -2285,7 +2285,12 @@ export default function App() {
                             step="any"
                             placeholder="0.00"
                             value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
-                            onFocus={() => setActiveInput('qty')}
+                            onFocus={() => {
+                              setActiveInput('qty');
+                              if (amountNum > 0) {
+                                setSpotAmount(amountNum.toString());
+                              }
+                            }}
                             onChange={(e) => handleQtyChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
@@ -2299,7 +2304,12 @@ export default function App() {
                             max={gameSettings.maxStake || 5000}
                             placeholder="0.00"
                             value={formattedUsdValue} 
-                            onFocus={() => setActiveInput('usd')}
+                            onFocus={() => {
+                              setActiveInput('usd');
+                              if (estimatedCostUsd > 0) {
+                                setSpotAmountUsd(estimatedCostUsd.toFixed(2));
+                              }
+                            }}
                             onChange={(e) => handleUsdChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
@@ -2359,7 +2369,12 @@ export default function App() {
                             step="any"
                             placeholder="0.00"
                             value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
-                            onFocus={() => setActiveInput('qty')}
+                            onFocus={() => {
+                              setActiveInput('qty');
+                              if (amountNum > 0) {
+                                setSpotAmount(amountNum.toString());
+                              }
+                            }}
                             onChange={(e) => handleQtyChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
@@ -2373,7 +2388,12 @@ export default function App() {
                             max={gameSettings.maxStake || 5000}
                             placeholder="0.00"
                             value={formattedUsdValue} 
-                            onFocus={() => setActiveInput('usd')}
+                            onFocus={() => {
+                              setActiveInput('usd');
+                              if (estimatedCostUsd > 0) {
+                                setSpotAmountUsd(estimatedCostUsd.toFixed(2));
+                              }
+                            }}
                             onChange={(e) => handleUsdChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
