@@ -730,7 +730,7 @@ async function startServer() {
     return parsed;
   };
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
   app.use('/uploads', express.static(uploadDir));
 
   // Initialize server-side Gemini client securely

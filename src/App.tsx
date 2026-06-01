@@ -413,7 +413,7 @@ export default function App() {
     if (!userVal) return;
     try {
       const modeVal = accountRef.current.mode;
-      await fetch('/api/user-state', {
+      const res = await fetch('/api/user-state', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -426,8 +426,12 @@ export default function App() {
           priceAlerts: alerts
         })
       });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Failed to pushUserState to server. Status:', res.status, 'Body:', errorText);
+      }
     } catch (e) {
-      console.error('Failed to push state', e);
+      console.error('Failed to pushUserState to server (network error):', e);
     }
   };
 
