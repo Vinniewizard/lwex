@@ -296,9 +296,12 @@ export default function App() {
   const lastServerDataRef = useRef<string>('');
   const hasSyncedFromServerRef = useRef<boolean>(false);
   const isSyncingFromServerRef = useRef<boolean>(false);
+  const localMutationTimeRef = useRef<number>(0);
   const serverTimeDriftRef = useRef<number>(0);
 
   const getServerTime = () => Date.now() + serverTimeDriftRef.current;
+
+  const isPullingRef = useRef<boolean>(false);
 
   const pullUserState = async () => {
     const userVal = currentUserRef.current;
@@ -306,6 +309,12 @@ export default function App() {
       hasSyncedFromServerRef.current = true;
       return;
     }
+    // Prevent overriding local state if we recently made changes
+    if (Date.now() - localMutationTimeRef.current < 3000) {
+      return;
+    }
+    if (isPullingRef.current) return;
+    isPullingRef.current = true;
     try {
       const modeVal = accountRef.current.mode;
       const res = await fetch(`/api/user-state?mode=${modeVal}`, {
@@ -343,20 +352,49 @@ export default function App() {
           if (serverFootprint !== localFootprint || !hasSyncedFromServerRef.current) {
             lastServerDataRef.current = serverFootprint;
             isSyncingFromServerRef.current = true;
-            // Only replace contracts if they are missing or length mismatch, otherwise update them securely
-            if (!hasSyncedFromServerRef.current || serverContracts.length !== activeContractsRef.current.length) {
+            
+            if (!hasSyncedFromServerRef.current) {
+              // Initial load
               setActiveContracts(serverContracts);
+              setTradeHistory(serverHistory);
             } else {
-              // Merge contracts carefully to preserve ticked data
+              // Merge contracts to preserve ticking and local active trades that aren't on server yet
               setActiveContracts(prev => {
-                const map = new Map<string, any>(serverContracts.map((c: any) => [c.id, c]));
-                return prev.map(c => {
-                  const sc = map.get(c.id);
-                  return sc ? { ...sc, ticksPassed: c.ticksPassed, ticksHistory: c.ticksHistory, currentProfit: c.currentProfit, currentPrice: c.currentPrice } : c;
+                const serverHistoryIds = new Set(serverHistory.map((h: any) => h.id));
+                const finalContracts: Contract[] = [];
+                const mapServer = new Map<string, any>(serverContracts.map((c: any) => [c.id, c]));
+                
+                // Keep local contracts unless they are marked as settled in server history
+                for (const c of prev) {
+                  if (!serverHistoryIds.has(c.id)) {
+                    if (mapServer.has(c.id)) {
+                      // exists on both, preserve ticking state
+                      const sc = mapServer.get(c.id);
+                      finalContracts.push({ ...sc, ticksPassed: c.ticksPassed, ticksHistory: c.ticksHistory, currentProfit: c.currentProfit, currentPrice: c.currentPrice });
+                    } else {
+                      // purely local, keep it
+                      finalContracts.push(c);
+                    }
+                  }
+                }
+                
+                // Pull new active contracts from server that aren't local
+                serverContracts.forEach((sc: any) => {
+                  if (!prev.some(c => c.id === sc.id)) {
+                    finalContracts.push(sc);
+                  }
                 });
+                
+                return finalContracts;
+              });
+              
+              // Only merge trade history appending new ones 
+              setTradeHistory(prev => {
+                const existing = new Set(prev.map(h => h.id));
+                const newItems = serverHistory.filter((h: any) => !existing.has(h.id));
+                return newItems.length > 0 ? [...prev, ...newItems] : prev;
               });
             }
-            setTradeHistory(serverHistory);
             setPriceAlerts(serverAlerts);
           } else {
             hasSyncedFromServerRef.current = true;
@@ -365,6 +403,8 @@ export default function App() {
       }
     } catch (e) {
       console.error('Failed to pull user state from server', e);
+    } finally {
+      isPullingRef.current = false;
     }
   };
 
@@ -580,6 +620,7 @@ export default function App() {
         }
       } else if (currentUser && hasSyncedFromServerRef.current) {
         if (combinedString !== lastServerDataRef.current) {
+          localMutationTimeRef.current = Date.now();
           lastServerDataRef.current = combinedString;
           pushUserState(activeContracts, tradeHistory, priceAlerts);
         }
@@ -1211,9 +1252,14 @@ export default function App() {
 
         if (newHistoryItems.length > 0) {
           setTradeHistory((prevHistory) => {
-            const filteredNew = newHistoryItems.filter(item => !prevHistory.some(h => h.id === item.id));
-            if (filteredNew.length === 0) return prevHistory;
-            return [...prevHistory, ...filteredNew];
+            // Ensure we don't have duplicates and robustly merge
+            const newHistoryMap = new Map(prevHistory.map(h => [h.id, h]));
+            newHistoryItems.forEach(item => {
+                if (!newHistoryMap.has(item.id)) {
+                    newHistoryMap.set(item.id, item);
+                }
+            });
+            return Array.from(newHistoryMap.values());
           });
         }
 
@@ -1338,28 +1384,6 @@ export default function App() {
 
     setActiveContracts((prev) => {
       const nextContracts = [...prev, newContract];
-      
-      if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
-        const stripVolatileLocal = (contracts: Contract[]) => {
-          return contracts.map(c => {
-            const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
-            return rest;
-          });
-        };
-        const combinedString = JSON.stringify({
-          activeContracts: stripVolatileLocal(nextContracts),
-          tradeHistory,
-          priceAlerts
-        });
-        lastServerDataRef.current = combinedString;
-        pushUserState(nextContracts, tradeHistory, priceAlerts);
-
-        const currentUserIdStr = currentUser ? currentUser.id : 'guest';
-        const currentMode = currentUser ? account.mode : 'demo';
-        const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
-        localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(nextContracts));
-      }
-      
       return nextContracts;
     });
 
@@ -1425,29 +1449,6 @@ export default function App() {
     setTradeHistory((prevHistory) => {
       const alreadyHas = prevHistory.some((h) => h.id === contract.id);
       const nextHistory = alreadyHas ? prevHistory : [...prevHistory, newHistoryItem];
-      
-      if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
-        const stripVolatileLocal = (contracts: Contract[]) => {
-          return contracts.map(c => {
-            const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
-            return rest;
-          });
-        };
-        const combinedString = JSON.stringify({
-          activeContracts: stripVolatileLocal(nextContracts),
-          tradeHistory: nextHistory,
-          priceAlerts
-        });
-        lastServerDataRef.current = combinedString;
-        pushUserState(nextContracts, nextHistory, priceAlerts);
-
-        const currentUserIdStr = currentUser ? currentUser.id : 'guest';
-        const currentMode = currentUser ? account.mode : 'demo';
-        const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
-        localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(nextContracts));
-        localStorage.setItem(`lwex_history_${currentPartitionId}`, JSON.stringify(nextHistory));
-      }
-
       return nextHistory;
     });
 

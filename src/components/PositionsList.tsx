@@ -1,5 +1,5 @@
-import React from 'react';
-import { TrendingUp, TrendingDown, Clock, Activity, Award } from 'lucide-react';
+import React, { useState } from 'react';
+import { TrendingUp, TrendingDown, Clock, Activity, Award, Filter } from 'lucide-react';
 import { Contract, TradeHistoryItem } from '../types';
 
 interface PositionsListProps {
@@ -21,11 +21,16 @@ export default function PositionsList({
   onChangeTab,
   cashoutMode = 'enabled'
 }: PositionsListProps) {
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'won' | 'lost'>('all');
   const isDark = theme === 'dark';
 
   const formatValue = (val: number) => {
     return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
+
+  const filteredHistory = historyFilter === 'all' 
+    ? closedContracts 
+    : closedContracts.filter(c => c.status === historyFilter);
 
   // Compute overall statistics
   const totalTrades = closedContracts.length;
@@ -231,10 +236,35 @@ export default function PositionsList({
         {/* TAB 2: CLOSED STATEMENTS */}
         {activeTab === 'statements' && (
           <div className="space-y-1.5">
-            {closedContracts.length === 0 ? (
+            {closedContracts.length > 0 && (
+              <div className="flex justify-end px-2 pt-2">
+                <div className={`flex rounded overflow-hidden text-[10px] uppercase font-bold tracking-wider border ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
+                  <button 
+                    onClick={() => setHistoryFilter('all')} 
+                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'all' ? (isDark ? 'bg-slate-800 text-white' : 'bg-gray-100 text-black') : (isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black')}`}
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => setHistoryFilter('won')} 
+                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'won' ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600') : (isDark ? 'text-gray-400 hover:text-emerald-400' : 'text-gray-500 hover:text-emerald-600')}`}
+                  >
+                    Won
+                  </button>
+                  <button 
+                    onClick={() => setHistoryFilter('lost')} 
+                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'lost' ? (isDark ? 'bg-red-500/20 text-red-400' : 'bg-red-50 text-red-600') : (isDark ? 'text-gray-400 hover:text-red-400' : 'text-gray-500 hover:text-red-600')}`}
+                  >
+                    Lost
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {filteredHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 space-y-2 text-gray-400">
                 <Clock className="h-8 w-8 text-gray-255" />
-                <span className="font-mono text-xs">No entries in the statements log yet. Let's make some trades!</span>
+                <span className="font-mono text-xs">{closedContracts.length === 0 ? "No entries in the statements log yet. Let's make some trades!" : "No trades match the selected filter."}</span>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -254,7 +284,7 @@ export default function PositionsList({
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDark ? 'divide-zinc-900/60' : 'divide-gray-100'}`}>
-                    {closedContracts.slice().reverse().map((item) => {
+                    {filteredHistory.slice().reverse().map((item) => {
                       const isProfit = item.profit >= 0;
                       return (
                         <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-zinc-900/30' : 'hover:bg-gray-50/50'}`}>
