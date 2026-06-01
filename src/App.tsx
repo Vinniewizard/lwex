@@ -267,14 +267,32 @@ export default function App() {
 
   const [chartType, setChartType] = useState<'line' | 'candles'>('candles');
 
-  // Contracts & History Log portfolios
+  // Find current account ID before initializing state to prevent cross-user leakage
+  const initialAccountId = (() => {
+    const savedAccountStr = localStorage.getItem('lwex_account');
+    if (savedAccountStr) {
+      try {
+        const parsed = JSON.parse(savedAccountStr);
+        if (parsed && parsed.id) return parsed.id;
+      } catch(e){}
+    }
+    const savedUserStr = localStorage.getItem('lwex_current_user');
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed && parsed.id) return `m-ac-${parsed.id}`;
+      } catch(e){}
+    }
+    return 'demo-temp-acc';
+  })();
+
+  // Contracts & History Log portfolios - Isolate using account-specific keys
   const [activeContracts, setActiveContracts] = useState<Contract[]>(() => {
-    const saved = localStorage.getItem('lwex_active_contracts');
+    const saved = localStorage.getItem(`lwex_active_contracts_${initialAccountId}`) || localStorage.getItem('lwex_active_contracts');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Adjust status or filter out expired if needed, but the tick loop handles it
           return parsed;
         }
       } catch (e) {
@@ -284,7 +302,7 @@ export default function App() {
     return [];
   });
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryItem[]>(() => {
-    const saved = localStorage.getItem('lwex_history');
+    const saved = localStorage.getItem(`lwex_history_${initialAccountId}`) || localStorage.getItem('lwex_history');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -299,9 +317,59 @@ export default function App() {
   });
 
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>(() => {
-    const saved = localStorage.getItem('lwex_price_alerts');
-    return saved ? JSON.parse(saved) : [];
+    const saved = localStorage.getItem(`lwex_price_alerts_${initialAccountId}`) || localStorage.getItem('lwex_price_alerts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse price alerts from localStorage', e);
+      }
+    }
+    return [];
   });
+
+  const prevAccountIdRef = useRef<string>(initialAccountId);
+
+  // Sync state to current account's details when active session or account changes
+  useEffect(() => {
+    const currentId = account.id;
+    const prevId = prevAccountIdRef.current;
+    
+    if (currentId !== prevId) {
+      const savedContracts = localStorage.getItem(`lwex_active_contracts_${currentId}`);
+      const savedHistory = localStorage.getItem(`lwex_history_${currentId}`);
+      const savedAlerts = localStorage.getItem(`lwex_price_alerts_${currentId}`);
+
+      let nextContracts: Contract[] = [];
+      let nextHistory: TradeHistoryItem[] = [];
+      let nextAlerts: PriceAlert[] = [];
+
+      if (savedContracts) {
+        try {
+          nextContracts = JSON.parse(savedContracts);
+        } catch (e) {}
+      }
+      if (savedHistory) {
+        try {
+          nextHistory = JSON.parse(savedHistory);
+        } catch (e) {}
+      }
+      if (savedAlerts) {
+        try {
+          nextAlerts = JSON.parse(savedAlerts);
+        } catch (e) {}
+      }
+
+      setActiveContracts(nextContracts);
+      setTradeHistory(nextHistory);
+      setPriceAlerts(nextAlerts);
+
+      prevAccountIdRef.current = currentId;
+    }
+  }, [account.id]);
 
   // Limit/Market Trade inputs
   const [spotPriceLimit, setSpotPriceLimit] = useState<number>(activeAsset.price);
@@ -356,13 +424,13 @@ export default function App() {
     accountRef.current = account;
   }, [account]);
 
-  // Persist state changes
+  // Persist state changes in account-specific partitions
   useEffect(() => {
     localStorage.setItem('lwex_account', JSON.stringify(account));
-    localStorage.setItem('lwex_history', JSON.stringify(tradeHistory));
-    localStorage.setItem('lwex_active_contracts', JSON.stringify(activeContracts));
+    localStorage.setItem(`lwex_history_${account.id}`, JSON.stringify(tradeHistory));
+    localStorage.setItem(`lwex_active_contracts_${account.id}`, JSON.stringify(activeContracts));
     localStorage.setItem('lwex_real_balance', String(realAccountBalance));
-    localStorage.setItem('lwex_price_alerts', JSON.stringify(priceAlerts));
+    localStorage.setItem(`lwex_price_alerts_${account.id}`, JSON.stringify(priceAlerts));
     if (currentUser) {
       localStorage.setItem('lwex_current_user', JSON.stringify(currentUser));
       localStorage.removeItem('lwex_logged_out');
