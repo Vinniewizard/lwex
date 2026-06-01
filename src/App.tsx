@@ -173,35 +173,49 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.user) {
-            const isDemo = account.mode === 'demo';
             const demoBal = Number(data.user.demo_balance) || 0;
             const realBal = Number(data.user.real_balance) || 0;
             setRealAccountBalance(realBal);
             setAccount(prev => ({
               ...prev,
-              balance: isDemo ? demoBal : realBal,
+              balance: prev.mode === 'demo' ? demoBal : realBal,
             }));
             // Update localstorage user to have latest demo and real balances
-            const updatedUser = { ...currentUser, demo_balance: demoBal, real_balance: realBal };
-            setCurrentUser(updatedUser);
-            localStorage.setItem('lwex_current_user', JSON.stringify(updatedUser));
+            setCurrentUser((prevUser: any) => {
+              if (prevUser) {
+                const updated = { ...prevUser, demo_balance: demoBal, real_balance: realBal };
+                localStorage.setItem('lwex_current_user', JSON.stringify(updated));
+                return updated;
+              }
+              return prevUser;
+            });
           }
         }
       } catch (err) {}
     };
 
     if (currentUser) {
-      const userBalance = Number(currentUser.balance) ?? 0.00;
-      const isDemo = currentUser.accountType === 'demo';
-      setAccount(prev => ({
-        ...prev,
-        mode: isDemo ? 'demo' : 'real',
-        balance: userBalance,
-        id: `m-ac-${currentUser.id}`
-      }));
-      if (!isDemo) {
-        setRealAccountBalance(userBalance);
-      }
+      setAccount(prev => {
+        const isDefaultReal = true;
+        // If they just logged in, we override to REAL by default unless otherwise handled.
+        // We only reset mode if we are switching to a completely new user
+        if (prev.id !== `m-ac-${currentUser.id}`) {
+          const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
+          return {
+            ...prev,
+            mode: 'real',
+            balance: userRealBal,
+            id: `m-ac-${currentUser.id}`
+          };
+        }
+        return {
+          ...prev,
+          id: `m-ac-${currentUser.id}`
+        };
+      });
+
+      const startRealUserBalance = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
+      setRealAccountBalance(startRealUserBalance);
       
       // Initial fetch to ensure devices are correctly synced
       syncUserBalance();
@@ -221,7 +235,7 @@ export default function App() {
     return () => {
       if (syncInterval) clearInterval(syncInterval);
     };
-  }, [currentUser?.id, account.mode]);
+  }, [currentUser?.id]);
 
   // Layout states
   const [activeTabView, setActiveTabView] = useState<'trade' | 'history' | 'stats'>('trade');
@@ -982,6 +996,19 @@ export default function App() {
     barrierOffset?: number;
     targetDigit?: number;
   }) => {
+    const minS = (gameSettings as any).minStake || 1;
+    const maxS = (gameSettings as any).maxStake || 5000;
+    
+    if (config.stake < minS) {
+      triggerToast(`Stake too low. Minimum allowed is $${minS.toFixed(2)}.`, false);
+      return;
+    }
+    
+    if (config.stake > maxS) {
+      triggerToast(`Stake too high. Maximum allowed is $${maxS.toFixed(2)}.`, false);
+      return;
+    }
+
     // Standard balances verification using Free Margin (User feedback)
     const activeStakes = activeContracts.reduce((sum, c) => sum + c.stake, 0);
     const freeBal = account.balance - activeStakes;
@@ -1185,6 +1212,18 @@ export default function App() {
     }
 
     const calculatedStake = activeAsset.price * amountNum;
+    const minS = (gameSettings as any).minStake || 1;
+    const maxS = (gameSettings as any).maxStake || 5000;
+    
+    if (calculatedStake < minS) {
+      triggerToast(`Stake too low. Minimum allowed is $${minS.toFixed(2)}.`, false);
+      return;
+    }
+    
+    if (calculatedStake > maxS) {
+      triggerToast(`Stake too high. Maximum allowed is $${maxS.toFixed(2)}.`, false);
+      return;
+    }
     
     // Check against available/free balance since stake is settled on completion
     const activeStakesValue = activeContracts.reduce((sum, c) => sum + c.stake, 0);
