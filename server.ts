@@ -135,6 +135,16 @@ function getSqliteInstance() {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS user_states (
+        user_id TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        active_contracts TEXT NOT NULL DEFAULT '[]',
+        trade_history TEXT NOT NULL DEFAULT '[]',
+        price_alerts TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, mode)
+      );
+
       CREATE TABLE IF NOT EXISTS group_chat_messages (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -373,6 +383,16 @@ function getD1Database() {
             referrer_id TEXT NOT NULL,
             referred_user_id TEXT NOT NULL,
             created_at TEXT NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS user_states (
+            user_id TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            active_contracts TEXT NOT NULL DEFAULT '[]',
+            trade_history TEXT NOT NULL DEFAULT '[]',
+            price_alerts TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, mode)
           );
 
           CREATE TABLE IF NOT EXISTS group_chat_messages (
@@ -1427,6 +1447,79 @@ Active technical indicator values: ${indicatorsString}.`}`;
     } catch (err: any) {
       console.error('[API USERS ME ERROR]', err.message);
       return res.status(500).json({ success: false, message: 'Server error' });
+    }
+  });
+
+  app.get('/api/user-state', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+      const userId = authHeader.split(' ')[1];
+      const mode = (req.query.mode as string) || 'demo';
+
+      const db = getD1Database();
+      const state = await db.prepare('SELECT active_contracts, trade_history, price_alerts FROM user_states WHERE user_id = ? AND mode = ?').bind(userId, mode).first();
+
+      if (!state) {
+        return res.json({
+          success: true,
+          activeContracts: [],
+          tradeHistory: [],
+          priceAlerts: []
+        });
+      }
+
+      return res.json({
+        success: true,
+        activeContracts: JSON.parse(state.active_contracts || '[]'),
+        tradeHistory: JSON.parse(state.trade_history || '[]'),
+        priceAlerts: JSON.parse(state.price_alerts || '[]')
+      });
+    } catch (err: any) {
+      console.error('[GET USER STATE ERROR]', err.message);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/user-state', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+      const userId = authHeader.split(' ')[1];
+      const { mode, activeContracts, tradeHistory, priceAlerts } = req.body;
+
+      if (!mode) {
+        return res.status(400).json({ success: false, message: 'mode is required' });
+      }
+
+      const activeContractsStr = JSON.stringify(activeContracts || []);
+      const tradeHistoryStr = JSON.stringify(tradeHistory || []);
+      const priceAlertsStr = JSON.stringify(priceAlerts || []);
+      const now = new Date().toISOString();
+
+      const db = getD1Database();
+      const existing = await db.prepare('SELECT user_id FROM user_states WHERE user_id = ? AND mode = ?').bind(userId, mode).first();
+
+      if (!existing) {
+        await db.prepare('INSERT INTO user_states (user_id, mode, active_contracts, trade_history, price_alerts, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(userId, mode, activeContractsStr, tradeHistoryStr, priceAlertsStr, now)
+          .run();
+      } else {
+        await db.prepare('UPDATE user_states SET active_contracts = ?, trade_history = ?, price_alerts = ?, updated_at = ? WHERE user_id = ? AND mode = ?')
+          .bind(activeContractsStr, tradeHistoryStr, priceAlertsStr, now, userId, mode)
+          .run();
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('[POST USER STATE ERROR]', err.message);
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 

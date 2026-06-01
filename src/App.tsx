@@ -268,6 +268,96 @@ export default function App() {
 
   const prevPartitionIdRef = useRef<string>(initialPartitionId);
 
+  const activeContractsRef = useRef(activeContracts);
+  useEffect(() => {
+    activeContractsRef.current = activeContracts;
+  }, [activeContracts]);
+
+  const accountRef = useRef(account);
+  useEffect(() => {
+    accountRef.current = account;
+  }, [account]);
+
+  const tradeHistoryRef = useRef(tradeHistory);
+  useEffect(() => {
+    tradeHistoryRef.current = tradeHistory;
+  }, [tradeHistory]);
+
+  const priceAlertsRef = useRef(priceAlerts);
+  useEffect(() => {
+    priceAlertsRef.current = priceAlerts;
+  }, [priceAlerts]);
+
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const lastServerDataRef = useRef<string>('');
+
+  const pullUserState = async () => {
+    const userVal = currentUserRef.current;
+    if (!userVal) return;
+    try {
+      const modeVal = accountRef.current.mode;
+      const res = await fetch(`/api/user-state?mode=${modeVal}`, {
+        headers: { 'Authorization': `Bearer ${userVal.id}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const serverContracts = data.activeContracts || [];
+          const serverHistory = data.tradeHistory || [];
+          const serverAlerts = data.priceAlerts || [];
+          
+          const serverFootprint = JSON.stringify({
+            activeContracts: serverContracts,
+            tradeHistory: serverHistory,
+            priceAlerts: serverAlerts
+          });
+
+          const localFootprint = JSON.stringify({
+            activeContracts: activeContractsRef.current,
+            tradeHistory: tradeHistoryRef.current,
+            priceAlerts: priceAlertsRef.current
+          });
+
+          if (serverFootprint !== localFootprint) {
+            lastServerDataRef.current = serverFootprint;
+            setActiveContracts(serverContracts);
+            setTradeHistory(serverHistory);
+            setPriceAlerts(serverAlerts);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to pull user state from server', e);
+    }
+  };
+
+  const pushUserState = async (contracts: Contract[], history: TradeHistoryItem[], alerts: PriceAlert[]) => {
+    const userVal = currentUserRef.current;
+    if (!userVal) return;
+    try {
+      const modeVal = accountRef.current.mode;
+      await fetch('/api/user-state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userVal.id}`
+        },
+        body: JSON.stringify({
+          mode: modeVal,
+          activeContracts: contracts,
+          tradeHistory: history,
+          priceAlerts: alerts
+        })
+      });
+    } catch (e) {
+      console.error('Failed to push state', e);
+    }
+  };
+
   // Sync account details, active contracts portfolio, trade history, price alerts, and balance atomically when currentUser or mode changes
   useEffect(() => {
     let syncInterval: any;
@@ -351,7 +441,11 @@ export default function App() {
 
       // Fetch latest values and enable periodic balance sync
       syncUserBalance();
-      syncInterval = setInterval(syncUserBalance, 10000);
+      pullUserState();
+      syncInterval = setInterval(() => {
+        syncUserBalance();
+        pullUserState();
+      }, 3000);
     } else {
       // Guest fallback
       setAccount(prev => ({
@@ -414,17 +508,7 @@ export default function App() {
     gameSettingsRef.current = gameSettings;
   }, [gameSettings]);
 
-  const activeContractsRef = useRef(activeContracts);
-  useEffect(() => {
-    activeContractsRef.current = activeContracts;
-  }, [activeContracts]);
-
-  const accountRef = useRef(account);
-  useEffect(() => {
-    accountRef.current = account;
-  }, [account]);
-
-  // Persist state changes in account-specific partitions
+  // Persist state changes in account-specific partitions and push to server
   useEffect(() => {
     localStorage.setItem('lwex_account', JSON.stringify(account));
     
@@ -438,6 +522,19 @@ export default function App() {
       localStorage.setItem(`lwex_history_${currentPartitionId}`, JSON.stringify(tradeHistory));
       localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
       localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
+
+      // Push state changes to server if logged in
+      if (currentUser) {
+        const combinedString = JSON.stringify({
+          activeContracts,
+          tradeHistory,
+          priceAlerts
+        });
+        if (combinedString !== lastServerDataRef.current) {
+          lastServerDataRef.current = combinedString;
+          pushUserState(activeContracts, tradeHistory, priceAlerts);
+        }
+      }
     }
     
     localStorage.setItem('lwex_real_balance', String(realAccountBalance));
