@@ -1422,7 +1422,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       
       const userId = authHeader.split(' ')[1];
       const db = getD1Database();
-      const user = await db.prepare('SELECT id, email, full_name as fullName, phone, account_type, demo_balance, real_balance FROM users WHERE id = ?').bind(userId).first();
+      const user = await db.prepare('SELECT u.id, u.email, u.full_name as fullName, p.phone, u.account_type, u.demo_balance, u.real_balance FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?').bind(userId).first();
       
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
