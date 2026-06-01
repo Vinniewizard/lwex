@@ -413,6 +413,12 @@ export default function App() {
     if (!userVal) return;
     try {
       const modeVal = accountRef.current.mode;
+      
+      const stripVolatile = (c: Contract) => {
+        const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
+        return rest;
+      };
+
       const res = await fetch('/api/user-state', {
         method: 'POST',
         headers: {
@@ -421,7 +427,7 @@ export default function App() {
         },
         body: JSON.stringify({
           mode: modeVal,
-          activeContracts: contracts,
+          activeContracts: contracts.map(stripVolatile),
           tradeHistory: history,
           priceAlerts: alerts
         })
@@ -526,7 +532,7 @@ export default function App() {
       syncInterval = setInterval(() => {
         syncUserBalance();
         pullUserState();
-      }, 1000);
+      }, 2000);
     } else {
       // Guest fallback
       setAccount(prev => ({
@@ -1388,6 +1394,7 @@ export default function App() {
 
     setActiveContracts((prev) => {
       const nextContracts = [...prev, newContract];
+      pushUserState(nextContracts, tradeHistory, priceAlerts);
       return nextContracts;
     });
 
@@ -2400,10 +2407,10 @@ export default function App() {
 
 
             {/* Unified Trading Terminal Workspace Grid (User Requested layout) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
               
               {/* LEFT SIDE: Interactive Trading Grid (Chart) */}
-              <div className={`lg:col-span-8 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
+              <div className={`md:col-span-7 lg:col-span-8 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
                 
                 {/* Horizontal drawing toolbar on Top of chart */}
                 <div className="w-full flex items-center justify-start px-2 py-1 space-x-2 border-b border-slate-900 shrink-0 select-none">
@@ -2469,7 +2476,7 @@ export default function App() {
               </div>
 
               {/* RIGHT SIDE: Compact Multi-column Order Execution controls */}
-              <div className={`lg:col-span-4 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
+              <div className={`md:col-span-5 lg:col-span-4 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
                 
                 {/* Panel Title & Type Selector */}
                 <div className="space-y-3 shrink-0">
