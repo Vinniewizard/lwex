@@ -126,6 +126,8 @@ export default function CashierModal({
   useEffect(() => {
     setApiError('');
     setSuccessMsg('');
+    setReceiptFile(null);
+    setTxHash('');
   }, [activeTab]);
 
   // Synchronize limits without clearing the generated deposit Address
@@ -376,6 +378,34 @@ export default function CashierModal({
       if (activeTab === 'deposit') {
         if (!depositAddress?.paymentId) {
           throw new Error('Please request a secure deposit address first.');
+        }
+
+        if (receiptFile) {
+          const formData = new FormData();
+          formData.append('receipt', receiptFile);
+          formData.append('userId', userId);
+          formData.append('amount', amount.toString());
+          formData.append('paymentMethod', `nowpayments-${selectedCoin.toLowerCase()}`);
+          formData.append('message', `Crypto Deposit manually uploaded. Coin: ${selectedCoin}, Network: ${selectedNetwork}, TxHash: ${txHash || 'None'}`);
+
+          const response = await fetch('/api/cashier/upload-receipt', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Crypto Receipt upload failed.');
+          }
+
+          setReceiptFile(null);
+          setTxHash('');
+          setSuccessMsg('Crypto deposit receipt submitted! LWEX admin will verify the transfer in the ledger and credit your account within 15-30 minutes.');
+          setDepositAddress(null);
+          if (userId) {
+            localStorage.removeItem(`lwex_pending_deposit_${userId}`);
+          }
+          return;
         }
 
         const response = await fetch(`/api/cashier/verify-deposit?paymentId=${depositAddress.paymentId}&userId=${userId}`);
@@ -1015,6 +1045,48 @@ export default function CashierModal({
                             </span>
                           </div>
 
+                          {/* Crypto Receipt Upload Manual Fallback */}
+                          <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-3 text-left">
+                            <div className="flex items-center justify-between gap-1 border-b border-slate-800 pb-2">
+                              <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">
+                                Option: Manual Receipt Verification
+                              </span>
+                              <Shield className="h-3.5 w-3.5 text-yellow-500" />
+                            </div>
+
+                            <p className="text-[10px] text-slate-400 leading-normal font-sans">
+                              If the automated blockchain system is slow to recognize your payment, you can upload a screenshot of your successful transaction receipt below to request a manual administrative verification check.
+                            </p>
+
+                            <div className="space-y-1.5">
+                              <label htmlFor="crypto-screenshot-file" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Upload Payment Receipt (Screenshot)
+                              </label>
+                              <input
+                                id="crypto-screenshot-file"
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                                className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-yellow-500 file:text-slate-950 hover:file:bg-yellow-600 cursor-pointer"
+                              />
+                              {receiptFile && <p className="text-[9px] text-yellow-500 font-bold">Selected: {receiptFile.name}</p>}
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label htmlFor="crypto-txhash-input" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Transaction Hash / TxID or Sender Address
+                              </label>
+                              <input
+                                id="crypto-txhash-input"
+                                type="text"
+                                value={txHash}
+                                onChange={(e) => setTxHash(e.target.value)}
+                                placeholder="Paste your transaction ID or sender wallet"
+                                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-white font-mono focus:border-yellow-500 outline-none"
+                              />
+                            </div>
+                          </div>
+
                           {/* Info footer */}
                           <div className="space-y-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                             <p>
@@ -1206,7 +1278,13 @@ export default function CashierModal({
               ) : (
                 <span>
                   {activeTab === 'deposit' 
-                    ? (paymentMethod === 'paybill' ? 'Upload & Notify Admin' : (!depositAddress ? `Generate ${selectedCoin} Address` : 'Verify Blockchain Deposit')) 
+                    ? (paymentMethod === 'paybill' 
+                        ? 'Upload & Notify Admin' 
+                        : (!depositAddress 
+                            ? `Generate ${selectedCoin} Address` 
+                            : (receiptFile ? 'Upload Receipt & Notify Admin' : 'Verify Blockchain Deposit')
+                          )
+                      ) 
                     : 'Dispatch Withdrawal'}
                 </span>
               )}
