@@ -294,10 +294,14 @@ export default function App() {
   }, [currentUser]);
 
   const lastServerDataRef = useRef<string>('');
+  const hasSyncedFromServerRef = useRef<boolean>(false);
 
   const pullUserState = async () => {
     const userVal = currentUserRef.current;
-    if (!userVal) return;
+    if (!userVal) {
+      hasSyncedFromServerRef.current = true;
+      return;
+    }
     try {
       const modeVal = accountRef.current.mode;
       const res = await fetch(`/api/user-state?mode=${modeVal}`, {
@@ -322,12 +326,13 @@ export default function App() {
             priceAlerts: priceAlertsRef.current
           });
 
-          if (serverFootprint !== localFootprint) {
+          if (serverFootprint !== localFootprint || !hasSyncedFromServerRef.current) {
             lastServerDataRef.current = serverFootprint;
             setActiveContracts(serverContracts);
             setTradeHistory(serverHistory);
             setPriceAlerts(serverAlerts);
           }
+          hasSyncedFromServerRef.current = true;
         }
       }
     } catch (e) {
@@ -397,6 +402,9 @@ export default function App() {
     const targetMode = currentUser ? account.mode : 'demo'; // Force guest to demo mode
     const targetPartitionId = `${targetUserIdStr}_${targetMode}`;
 
+    // Reset sync status when switching partition or on mount
+    hasSyncedFromServerRef.current = false;
+
     // Load stored data for this specific partition
     const savedContracts = localStorage.getItem(`lwex_active_contracts_${targetPartitionId}`);
     const savedHistory = localStorage.getItem(`lwex_history_${targetPartitionId}`);
@@ -445,7 +453,7 @@ export default function App() {
       syncInterval = setInterval(() => {
         syncUserBalance();
         pullUserState();
-      }, 3000);
+      }, 1500);
     } else {
       // Guest fallback
       setAccount(prev => ({
@@ -523,8 +531,8 @@ export default function App() {
       localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
       localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
 
-      // Push state changes to server if logged in
-      if (currentUser) {
+      // Push state changes to server if logged in and has fetched initial server state
+      if (currentUser && hasSyncedFromServerRef.current) {
         const combinedString = JSON.stringify({
           activeContracts,
           tradeHistory,
@@ -999,23 +1007,25 @@ export default function App() {
             }
           } else if (contract.type === 'touch-no-touch') {
             const isTouch = contract.direction === 'touch';
-            const hasTouched = isTouch
-              ? nextPrice >= actualBarrier
-              : nextPrice < actualBarrier;
+            const touched = (contract.barrierOffset && contract.barrierOffset > 0)
+              ? (actualBarrier >= contract.entryPrice ? nextPrice >= actualBarrier : nextPrice <= actualBarrier)
+              : false;
 
             if (isTouch) {
-              if (hasTouched) {
+              if (touched) {
                 currentProfit = contract.stake * 0.955;
                 status = 'won';
               } else {
                 currentProfit = -contract.stake;
+                status = 'active';
               }
-            } else {
-              if (!hasTouched) {
+            } else { // no-touch
+              if (touched) {
                 currentProfit = -contract.stake;
                 status = 'lost';
               } else {
                 currentProfit = contract.stake * 0.955;
+                status = 'active';
               }
             }
           } else if (contract.type === 'digit-over-under') {
