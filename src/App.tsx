@@ -295,6 +295,7 @@ export default function App() {
 
   const lastServerDataRef = useRef<string>('');
   const hasSyncedFromServerRef = useRef<boolean>(false);
+  const isSyncingFromServerRef = useRef<boolean>(false);
 
   const pullUserState = async () => {
     const userVal = currentUserRef.current;
@@ -328,11 +329,13 @@ export default function App() {
 
           if (serverFootprint !== localFootprint || !hasSyncedFromServerRef.current) {
             lastServerDataRef.current = serverFootprint;
+            isSyncingFromServerRef.current = true;
             setActiveContracts(serverContracts);
             setTradeHistory(serverHistory);
             setPriceAlerts(serverAlerts);
+          } else {
+            hasSyncedFromServerRef.current = true;
           }
-          hasSyncedFromServerRef.current = true;
         }
       }
     } catch (e) {
@@ -404,6 +407,7 @@ export default function App() {
 
     // Reset sync status when switching partition or on mount
     hasSyncedFromServerRef.current = false;
+    isSyncingFromServerRef.current = false;
 
     // Load stored data for this specific partition
     const savedContracts = localStorage.getItem(`lwex_active_contracts_${targetPartitionId}`);
@@ -453,7 +457,7 @@ export default function App() {
       syncInterval = setInterval(() => {
         syncUserBalance();
         pullUserState();
-      }, 1500);
+      }, 1000);
     } else {
       // Guest fallback
       setAccount(prev => ({
@@ -531,13 +535,18 @@ export default function App() {
       localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
       localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
 
-      // Push state changes to server if logged in and has fetched initial server state
-      if (currentUser && hasSyncedFromServerRef.current) {
-        const combinedString = JSON.stringify({
-          activeContracts,
-          tradeHistory,
-          priceAlerts
-        });
+      const combinedString = JSON.stringify({
+        activeContracts,
+        tradeHistory,
+        priceAlerts
+      });
+
+      if (isSyncingFromServerRef.current) {
+        if (combinedString === lastServerDataRef.current) {
+          isSyncingFromServerRef.current = false;
+          hasSyncedFromServerRef.current = true;
+        }
+      } else if (currentUser && hasSyncedFromServerRef.current) {
         if (combinedString !== lastServerDataRef.current) {
           lastServerDataRef.current = combinedString;
           pushUserState(activeContracts, tradeHistory, priceAlerts);
@@ -1295,7 +1304,26 @@ export default function App() {
       .catch(err => console.error('Failed to sync balance on purchase:', err));
     }
 
-    setActiveContracts((prev) => [...prev, newContract]);
+    setActiveContracts((prev) => {
+      const nextContracts = [...prev, newContract];
+      
+      if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
+        const combinedString = JSON.stringify({
+          activeContracts: nextContracts,
+          tradeHistory,
+          priceAlerts
+        });
+        lastServerDataRef.current = combinedString;
+        pushUserState(nextContracts, tradeHistory, priceAlerts);
+
+        const currentUserIdStr = currentUser ? currentUser.id : 'guest';
+        const currentMode = currentUser ? account.mode : 'demo';
+        const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
+        localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(nextContracts));
+      }
+      
+      return nextContracts;
+    });
 
     triggerToast(`Options Contract secured: Purchased ${config.direction.toUpperCase()} on ${activeAsset.symbol}.`, true);
   };
@@ -1340,28 +1368,46 @@ export default function App() {
       .catch(err => console.error('Error syncing early sell balance:', err));
     }
 
+    const nextContracts = activeContracts.filter((c) => c.id !== contractId);
+    const newHistoryItem: TradeHistoryItem = {
+      id: contract.id,
+      assetName: contract.assetName,
+      assetSymbol: contract.assetSymbol,
+      type: contract.type,
+      direction: contract.direction,
+      stake: contract.stake,
+      payout: refund,
+      profit: refund - contract.stake,
+      status: 'sold',
+      entryPrice: contract.entryPrice,
+      exitPrice: contract.currentPrice,
+      purchaseTime: contract.entryTime
+    };
+
     setTradeHistory((prevHistory) => {
-      if (prevHistory.some((h) => h.id === contract.id)) return prevHistory;
-      return [
-        ...prevHistory,
-        {
-          id: contract.id,
-          assetName: contract.assetName,
-          assetSymbol: contract.assetSymbol,
-          type: contract.type,
-          direction: contract.direction,
-          stake: contract.stake,
-          payout: refund,
-          profit: refund - contract.stake,
-          status: 'sold',
-          entryPrice: contract.entryPrice,
-          exitPrice: contract.currentPrice,
-          purchaseTime: contract.entryTime
-        }
-      ];
+      const alreadyHas = prevHistory.some((h) => h.id === contract.id);
+      const nextHistory = alreadyHas ? prevHistory : [...prevHistory, newHistoryItem];
+      
+      if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
+        const combinedString = JSON.stringify({
+          activeContracts: nextContracts,
+          tradeHistory: nextHistory,
+          priceAlerts
+        });
+        lastServerDataRef.current = combinedString;
+        pushUserState(nextContracts, nextHistory, priceAlerts);
+
+        const currentUserIdStr = currentUser ? currentUser.id : 'guest';
+        const currentMode = currentUser ? account.mode : 'demo';
+        const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
+        localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(nextContracts));
+        localStorage.setItem(`lwex_history_${currentPartitionId}`, JSON.stringify(nextHistory));
+      }
+
+      return nextHistory;
     });
 
-    setActiveContracts((prev) => prev.filter((c) => c.id !== contractId));
+    setActiveContracts(nextContracts);
     triggerToast(`Contract liquidated early for $${refund.toFixed(2)} refund.`, true);
   };
 
