@@ -399,18 +399,17 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     if (!isOpen || !isAuthenticated) return;
     
     const intervalId = setInterval(() => {
-      if (activeTab === 'deposits' || activeTab === 'completed_deposits' || activeTab === 'withdrawals') {
-        fetch('/api/admin/transactions', { headers: { 'x-admin-key': adminKey } })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              setPendingDeposits(data.pendingDeposits || []);
-              setCompletedDeposits(data.completedDeposits || []);
-              setWithdrawals(data.withdrawals || []);
-            }
-          })
-          .catch(() => {});
-      }
+      // Always fetch transactions to keep notification badges updated
+      fetch('/api/admin/transactions', { headers: { 'x-admin-key': adminKey } })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setPendingDeposits(data.pendingDeposits || []);
+            setCompletedDeposits(data.completedDeposits || []);
+            setWithdrawals(data.withdrawals || []);
+          }
+        })
+        .catch(() => {});
 
       if (activeTab === 'telegram') {
         fetch('/api/telegram/config')
@@ -937,6 +936,9 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                     <span>{tab.label}</span>
                     {tab.id === 'deposits' && pendingDeposits.length > 0 && (
                       <span className="bg-red-500 text-white text-[8px] font-extrabold px-1 py-0.2 rounded-full leading-none">{pendingDeposits.length}</span>
+                    )}
+                    {tab.id === 'withdrawals' && withdrawals.filter(w => w.status === 'pending').length > 0 && (
+                      <span className="bg-red-500 text-white text-[8px] font-extrabold px-1 py-0.2 rounded-full leading-none">{withdrawals.filter(w => w.status === 'pending').length}</span>
                     )}
                   </button>
                 );

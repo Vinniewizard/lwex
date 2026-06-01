@@ -1466,6 +1466,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       if (!state) {
         return res.json({
           success: true,
+          serverTime: Date.now(),
           activeContracts: [],
           tradeHistory: [],
           priceAlerts: []
@@ -1474,6 +1475,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       return res.json({
         success: true,
+        serverTime: Date.now(),
         activeContracts: JSON.parse(state.active_contracts || '[]'),
         tradeHistory: JSON.parse(state.trade_history || '[]'),
         priceAlerts: JSON.parse(state.price_alerts || '[]')

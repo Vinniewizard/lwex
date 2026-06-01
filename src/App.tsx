@@ -296,6 +296,9 @@ export default function App() {
   const lastServerDataRef = useRef<string>('');
   const hasSyncedFromServerRef = useRef<boolean>(false);
   const isSyncingFromServerRef = useRef<boolean>(false);
+  const serverTimeDriftRef = useRef<number>(0);
+
+  const getServerTime = () => Date.now() + serverTimeDriftRef.current;
 
   const pullUserState = async () => {
     const userVal = currentUserRef.current;
@@ -311,18 +314,28 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
+          if (data.serverTime) {
+            serverTimeDriftRef.current = data.serverTime - Date.now();
+          }
           const serverContracts = data.activeContracts || [];
           const serverHistory = data.tradeHistory || [];
           const serverAlerts = data.priceAlerts || [];
           
+          const stripVolatile = (contracts: Contract[]) => {
+            return contracts.map(c => {
+              const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
+              return rest;
+            });
+          };
+
           const serverFootprint = JSON.stringify({
-            activeContracts: serverContracts,
+            activeContracts: stripVolatile(serverContracts),
             tradeHistory: serverHistory,
             priceAlerts: serverAlerts
           });
 
           const localFootprint = JSON.stringify({
-            activeContracts: activeContractsRef.current,
+            activeContracts: stripVolatile(activeContractsRef.current),
             tradeHistory: tradeHistoryRef.current,
             priceAlerts: priceAlertsRef.current
           });
@@ -330,7 +343,19 @@ export default function App() {
           if (serverFootprint !== localFootprint || !hasSyncedFromServerRef.current) {
             lastServerDataRef.current = serverFootprint;
             isSyncingFromServerRef.current = true;
-            setActiveContracts(serverContracts);
+            // Only replace contracts if they are missing or length mismatch, otherwise update them securely
+            if (!hasSyncedFromServerRef.current || serverContracts.length !== activeContractsRef.current.length) {
+              setActiveContracts(serverContracts);
+            } else {
+              // Merge contracts carefully to preserve ticked data
+              setActiveContracts(prev => {
+                const map = new Map<string, any>(serverContracts.map((c: any) => [c.id, c]));
+                return prev.map(c => {
+                  const sc = map.get(c.id);
+                  return sc ? { ...sc, ticksPassed: c.ticksPassed, ticksHistory: c.ticksHistory, currentProfit: c.currentProfit, currentPrice: c.currentPrice } : c;
+                });
+              });
+            }
             setTradeHistory(serverHistory);
             setPriceAlerts(serverAlerts);
           } else {
@@ -535,8 +560,15 @@ export default function App() {
       localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
       localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
 
+      const stripVolatileLocal = (contracts: Contract[]) => {
+        return contracts.map(c => {
+          const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
+          return rest;
+        });
+      };
+
       const combinedString = JSON.stringify({
-        activeContracts,
+        activeContracts: stripVolatileLocal(activeContracts),
         tradeHistory,
         priceAlerts
       });
@@ -898,7 +930,7 @@ export default function App() {
   // Core background ticker generator loop
   useEffect(() => {
     const loopInterval = setInterval(() => {
-      const now = Date.now();
+      const now = getServerTime();
       const nextPricesMap: Record<string, number> = {};
 
       setAssetsTicksMap((prevTicksMap) => {
@@ -1255,17 +1287,17 @@ export default function App() {
       barrier,
       barrierOffset: config.barrierOffset,
       entryPrice: latestPrice,
-      entryTime: Date.now(),
+      entryTime: getServerTime(),
       duration: config.duration,
       durationUnit: config.durationUnit,
-      expiryTime: Date.now() + getDurationMs(config.duration, config.durationUnit),
+      expiryTime: getServerTime() + getDurationMs(config.duration, config.durationUnit),
       status: 'active',
       currentPrice: latestPrice,
       currentProfit: 0,
       sellPrice: config.stake * 0.85,
       targetDigit: config.targetDigit,
       ticksPassed: 0,
-      ticksHistory: [{ time: Date.now(), price: latestPrice }]
+      ticksHistory: [{ time: getServerTime(), price: latestPrice }]
     };
 
     // Deduct stake instantly from local account
@@ -1308,8 +1340,14 @@ export default function App() {
       const nextContracts = [...prev, newContract];
       
       if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
+        const stripVolatileLocal = (contracts: Contract[]) => {
+          return contracts.map(c => {
+            const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
+            return rest;
+          });
+        };
         const combinedString = JSON.stringify({
-          activeContracts: nextContracts,
+          activeContracts: stripVolatileLocal(nextContracts),
           tradeHistory,
           priceAlerts
         });
@@ -1389,8 +1427,14 @@ export default function App() {
       const nextHistory = alreadyHas ? prevHistory : [...prevHistory, newHistoryItem];
       
       if (currentUser && hasSyncedFromServerRef.current && !isSyncingFromServerRef.current) {
+        const stripVolatileLocal = (contracts: Contract[]) => {
+          return contracts.map(c => {
+            const { currentPrice, currentProfit, ticksPassed, ticksHistory, ...rest } = c;
+            return rest;
+          });
+        };
         const combinedString = JSON.stringify({
-          activeContracts: nextContracts,
+          activeContracts: stripVolatileLocal(nextContracts),
           tradeHistory: nextHistory,
           priceAlerts
         });
