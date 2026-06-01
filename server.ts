@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -11,10 +10,6 @@ import nodemailer from 'nodemailer';
 
 dotenv.config({ path: ['.env.local', '.env', '.env.example'] });
 
-const __filename = typeof import.meta !== 'undefined' && import.meta.url 
-  ? fileURLToPath(import.meta.url) 
-  : '';
-const __dirname = __filename ? path.dirname(__filename) : process.cwd();
 const cashierLedgerPath = path.join(process.cwd(), 'cashier-ledger.json');
 const uploadDir = path.join(process.cwd(), 'uploads');
 
