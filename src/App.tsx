@@ -307,6 +307,8 @@ export default function App() {
   const [spotPriceLimit, setSpotPriceLimit] = useState<number>(activeAsset.price);
   const [spotType, setSpotType] = useState<'limit' | 'market'>('limit');
   const [spotAmount, setSpotAmount] = useState<string>('0.05');
+  const [spotAmountUsd, setSpotAmountUsd] = useState<string>('');
+  const [activeInput, setActiveInput] = useState<'qty' | 'usd'>('qty');
   const [spotDuration, setSpotDuration] = useState<number>(5);
   const [spotDurationUnit, setSpotDurationUnit] = useState<'ticks' | 'seconds' | 'minutes'>('seconds');
 
@@ -599,11 +601,20 @@ export default function App() {
         );
 
         playAlertSound();
+
+        // Check if email notification was requested
+        if (alert.notifyEmail && currentUser?.email) {
+          fetch('/api/alerts/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: currentUser.email, alert, latestPrice })
+          }).catch(err => console.error('Failed to dispatch alert notification', err));
+        }
       }
     });
-  }, [assetsTicksMap, priceAlerts, assetsRegistry, activeAsset]);
+  }, [assetsTicksMap, priceAlerts, assetsRegistry, activeAsset, currentUser]);
 
-  const handleAddPriceAlert = (targetPrice: number, condition: 'above' | 'below') => {
+  const handleAddPriceAlert = (targetPrice: number, condition: 'above' | 'below', notifyEmail: boolean = false) => {
     const newAlert: PriceAlert = {
       id: `pa-${Math.random().toString(36).substring(2, 10)}`,
       assetId: activeAsset.id,
@@ -611,6 +622,7 @@ export default function App() {
       targetPrice,
       condition,
       isTriggered: false,
+      notifyEmail,
       createdAt: Date.now()
     };
     setPriceAlerts((prev) => [newAlert, ...prev]);
@@ -1246,19 +1258,29 @@ export default function App() {
     });
   };
 
+  const handleQtyChange = (qtyVal: string) => {
+    setActiveInput('qty');
+    setSpotAmount(qtyVal);
+  };
+
   const handlePresetPercentage = (percentage: number) => {
+    setActiveInput('qty');
     // Allocation based on Available balance instead of raw balance
     const activeStakesValue = activeContracts.reduce((sum, c) => sum + c.stake, 0);
     const freeBalVal = account.balance - activeStakesValue;
-    const alloc = (freeBalVal * (percentage / 100)) / activeAsset.price;
-    setSpotAmount(alloc.toFixed(activeAsset.decimals > 2 ? 4 : 2));
+    const allocUsd = freeBalVal * (percentage / 100);
+    setSpotAmountUsd(allocUsd.toFixed(2));
+    const allocQty = allocUsd / activeAsset.price;
+    setSpotAmount(allocQty.toFixed(activeAsset.decimals > 2 ? 6 : 4));
   };
 
   const handleUsdChange = (usdVal: string) => {
+    setActiveInput('usd');
+    setSpotAmountUsd(usdVal);
     const usdNum = parseFloat(usdVal) || 0;
     if (usdNum > 0 && activeAsset.price > 0) {
       const cryptoQty = usdNum / activeAsset.price;
-      setSpotAmount(cryptoQty.toFixed(activeAsset.decimals > 2 ? 4 : 2));
+      setSpotAmount(cryptoQty.toFixed(activeAsset.decimals > 2 ? 6 : 4));
     } else {
       setSpotAmount('');
     }
@@ -1266,6 +1288,8 @@ export default function App() {
 
   const amountNum = parseFloat(spotAmount);
   const estimatedCostUsd = !isNaN(amountNum) && amountNum > 0 ? amountNum * activeAsset.price : 0;
+  
+  const formattedUsdValue = activeInput === 'usd' ? spotAmountUsd : (estimatedCostUsd > 0 ? estimatedCostUsd.toFixed(2) : '');
 
   const activeTicks = assetsTicksMap[activeAsset.id] || [];
 
@@ -2260,8 +2284,9 @@ export default function App() {
                             type="number" 
                             step="any"
                             placeholder="0.00"
-                            value={spotAmount} 
-                            onChange={(e) => setSpotAmount(e.target.value)}
+                            value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
+                            onFocus={() => setActiveInput('qty')}
+                            onChange={(e) => handleQtyChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
                         </div>
@@ -2273,7 +2298,8 @@ export default function App() {
                             min={gameSettings.minStake || 1}
                             max={gameSettings.maxStake || 5000}
                             placeholder="0.00"
-                            value={estimatedCostUsd > 0 ? estimatedCostUsd.toFixed(2) : ''} 
+                            value={formattedUsdValue} 
+                            onFocus={() => setActiveInput('usd')}
                             onChange={(e) => handleUsdChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
@@ -2332,8 +2358,9 @@ export default function App() {
                             type="number" 
                             step="any"
                             placeholder="0.00"
-                            value={spotAmount} 
-                            onChange={(e) => setSpotAmount(e.target.value)}
+                            value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
+                            onFocus={() => setActiveInput('qty')}
+                            onChange={(e) => handleQtyChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />
                         </div>
@@ -2345,7 +2372,8 @@ export default function App() {
                             min={gameSettings.minStake || 1}
                             max={gameSettings.maxStake || 5000}
                             placeholder="0.00"
-                            value={estimatedCostUsd > 0 ? estimatedCostUsd.toFixed(2) : ''} 
+                            value={formattedUsdValue} 
+                            onFocus={() => setActiveInput('usd')}
                             onChange={(e) => handleUsdChange(e.target.value)}
                             className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
                           />

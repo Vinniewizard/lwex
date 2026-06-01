@@ -89,6 +89,7 @@ export interface PriceAlert {
   targetPrice: number;
   condition: 'above' | 'below';
   isTriggered: boolean;
+  notifyEmail?: boolean;
   createdAt: number;
 }
 

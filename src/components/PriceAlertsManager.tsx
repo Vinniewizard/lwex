@@ -8,7 +8,7 @@ interface PriceAlertsManagerProps {
   activeAsset: Asset;
   assetsRegistry?: Asset[];
   priceAlerts: PriceAlert[];
-  onAddAlert: (targetPrice: number, condition: 'above' | 'below') => void;
+  onAddAlert: (targetPrice: number, condition: 'above' | 'below', notifyEmail: boolean) => void;
   onDeleteAlert: (id: string) => void;
 }
 
@@ -23,6 +23,7 @@ export default function PriceAlertsManager({
   const isDark = theme === 'dark';
   const [alertPrice, setAlertPrice] = useState<string>('');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
+  const [notifyEmail, setNotifyEmail] = useState(false);
 
   // Keep track of stable previous prices to calculate tick trends
   const [prevPrices, setPrevPrices] = useState<Record<string, number>>({});
@@ -55,7 +56,7 @@ export default function PriceAlertsManager({
     e.preventDefault();
     const parsed = parseFloat(alertPrice);
     if (!isNaN(parsed) && parsed > 0) {
-      onAddAlert(parsed, condition);
+      onAddAlert(parsed, condition, notifyEmail);
     }
   };
 
@@ -171,6 +172,17 @@ export default function PriceAlertsManager({
               {p > 0 ? `+${p}%` : `${p}%`}
             </button>
           ))}
+        </div>
+
+        <div className="flex items-center space-x-2 py-1">
+          <input 
+            type="checkbox" 
+            id="notifyEmail" 
+            checked={notifyEmail} 
+            onChange={(e) => setNotifyEmail(e.target.checked)} 
+            className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-600 focus:ring-offset-slate-900" 
+          />
+          <label htmlFor="notifyEmail" className="text-[10px] text-gray-400 font-medium">Send Email Notification</label>
         </div>
 
         <button

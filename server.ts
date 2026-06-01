@@ -1589,6 +1589,35 @@ Active technical indicator values: ${indicatorsString}.`}`;
     }
   });
 
+  app.post('/api/alerts/notify', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const { email, alert, latestPrice } = req.body;
+      if (!email || !alert) {
+        return res.status(400).json({ success: false, message: 'Email and alert payload are required.' });
+      }
+
+      const transporter = getMailTransporter();
+      if (transporter) {
+        let conditionText = alert.condition === 'above' ? 'crossed above' : 'crossed below';
+        await transporter.sendMail({
+          from: `"LWEX Trade Alerts" <${process.env.GMAIL_USER}>`,
+          to: email,
+          subject: `🚨 LWEX Price Alert: ${alert.assetSymbol} ${conditionText} ${alert.targetPrice}`,
+          html: `<p>Your price alert has been triggered.</p>
+                 <p><b>Asset:</b> ${alert.assetSymbol}</p>
+                 <p><b>Condition:</b> ${conditionText} ${alert.targetPrice}</p>
+                 <p><b>Current Price:</b> ${latestPrice}</p>
+                 <p>Login to LWEX to manage your positions.</p>`
+        });
+      }
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error('Alert notify error:', error);
+      return res.status(500).json({ success: false, message: 'Failed to process notification.' });
+    }
+  });
+
   // Reset password endpoint
   app.post('/api/auth/reset-password', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
