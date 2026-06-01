@@ -192,28 +192,38 @@ export default function App() {
 
   const [chartType, setChartType] = useState<'line' | 'candles'>('candles');
 
-  // Find current account ID before initializing state to prevent cross-user leakage
-  const initialAccountId = (() => {
-    const savedAccountStr = localStorage.getItem('lwex_account');
-    if (savedAccountStr) {
+  // Load initial context for partitioning to prevent cross-user and cross-mode leakage
+  const initialUser = (() => {
+    const saved = localStorage.getItem('lwex_current_user');
+    if (saved) {
       try {
-        const parsed = JSON.parse(savedAccountStr);
-        if (parsed && parsed.id) return parsed.id;
-      } catch(e){}
+        return JSON.parse(saved);
+      } catch (e) {}
     }
-    const savedUserStr = localStorage.getItem('lwex_current_user');
-    if (savedUserStr) {
-      try {
-        const parsed = JSON.parse(savedUserStr);
-        if (parsed && parsed.id) return `m-ac-${parsed.id}`;
-      } catch(e){}
-    }
-    return 'demo-temp-acc';
+    return null;
   })();
 
-  // Contracts & History Log portfolios - Isolate using account-specific keys
+  const initialAccountMode = (() => {
+    const saved = localStorage.getItem('lwex_account');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.mode === 'demo' || parsed.mode === 'real')) {
+          return parsed.mode;
+        }
+      } catch (e) {}
+    }
+    return initialUser ? 'real' : 'demo';
+  })();
+
+  const initialPartitionId = (() => {
+    const userIdStr = initialUser ? initialUser.id : 'guest';
+    return `${userIdStr}_${initialAccountMode}`;
+  })();
+
+  // Contracts & History Log portfolios - Isolate using partition-specific keys (user + mode)
   const [activeContracts, setActiveContracts] = useState<Contract[]>(() => {
-    const saved = localStorage.getItem(`lwex_active_contracts_${initialAccountId}`) || localStorage.getItem('lwex_active_contracts');
+    const saved = localStorage.getItem(`lwex_active_contracts_${initialPartitionId}`) || localStorage.getItem('lwex_active_contracts');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -227,7 +237,7 @@ export default function App() {
     return [];
   });
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryItem[]>(() => {
-    const saved = localStorage.getItem(`lwex_history_${initialAccountId}`) || localStorage.getItem('lwex_history');
+    const saved = localStorage.getItem(`lwex_history_${initialPartitionId}`) || localStorage.getItem('lwex_history');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -242,7 +252,7 @@ export default function App() {
   });
 
   const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>(() => {
-    const saved = localStorage.getItem(`lwex_price_alerts_${initialAccountId}`) || localStorage.getItem('lwex_price_alerts');
+    const saved = localStorage.getItem(`lwex_price_alerts_${initialPartitionId}`) || localStorage.getItem('lwex_price_alerts');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -256,9 +266,9 @@ export default function App() {
     return [];
   });
 
-  const prevAccountIdRef = useRef<string>(initialAccountId);
+  const prevPartitionIdRef = useRef<string>(initialPartitionId);
 
-  // Sync account details, active contracts portfolio, trade history, price alerts, and balance atomically when currentUser changes (Login/Logout event)
+  // Sync account details, active contracts portfolio, trade history, price alerts, and balance atomically when currentUser or mode changes
   useEffect(() => {
     let syncInterval: any;
 
@@ -292,82 +302,74 @@ export default function App() {
       } catch (err) {}
     };
 
-    // 1. Calculate the target Account ID
-    const nextAccountId = currentUser ? `m-ac-${currentUser.id}` : 'demo-temp-acc';
+    // Calculate current target partition key
+    const targetUserIdStr = currentUser ? currentUser.id : 'guest';
+    const targetMode = currentUser ? account.mode : 'demo'; // Force guest to demo mode
+    const targetPartitionId = `${targetUserIdStr}_${targetMode}`;
 
-    // 2. Load the stored data for this account synchronously
-    const savedContracts = localStorage.getItem(`lwex_active_contracts_${nextAccountId}`);
-    const savedHistory = localStorage.getItem(`lwex_history_${nextAccountId}`);
-    const savedAlerts = localStorage.getItem(`lwex_price_alerts_${nextAccountId}`);
+    // Load stored data for this specific partition
+    const savedContracts = localStorage.getItem(`lwex_active_contracts_${targetPartitionId}`);
+    const savedHistory = localStorage.getItem(`lwex_history_${targetPartitionId}`);
+    const savedAlerts = localStorage.getItem(`lwex_price_alerts_${targetPartitionId}`);
 
     let nextContracts: Contract[] = [];
     let nextHistory: TradeHistoryItem[] = [];
     let nextAlerts: PriceAlert[] = [];
 
     if (savedContracts) {
-      try {
-        nextContracts = JSON.parse(savedContracts);
-      } catch (e) {}
+      try { nextContracts = JSON.parse(savedContracts); } catch (e) {}
     }
     if (savedHistory) {
-      try {
-        nextHistory = JSON.parse(savedHistory);
-      } catch (e) {}
+      try { nextHistory = JSON.parse(savedHistory); } catch (e) {}
     }
     if (savedAlerts) {
-      try {
-        nextAlerts = JSON.parse(savedAlerts);
-      } catch (e) {}
+      try { nextAlerts = JSON.parse(savedAlerts); } catch (e) {}
     }
 
-    // 3. Immediately set state for portfolios
+    // Set portfolio states
     setActiveContracts(nextContracts);
     setTradeHistory(nextHistory);
     setPriceAlerts(nextAlerts);
 
-    // 4. Update the account and real balance states
+    // Sync account details
     if (currentUser) {
       setAccount(prev => {
         const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
-        if (prev.id !== nextAccountId) {
-          return {
-            ...prev,
-            mode: 'real',
-            balance: userRealBal,
-            id: nextAccountId
-          };
-        }
+        const userDemoBal = Number(currentUser.demo_balance) || 10000.00;
+        const nextId = `m-ac-${currentUser.id}`;
+        
         return {
           ...prev,
-          id: nextAccountId
+          mode: targetMode,
+          balance: targetMode === 'real' ? userRealBal : userDemoBal,
+          id: nextId
         };
       });
 
       const startRealUserBalance = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
       setRealAccountBalance(startRealUserBalance);
-      
-      // Initial fetch to ensure devices are correctly synced
+
+      // Fetch latest values and enable periodic balance sync
       syncUserBalance();
-      // Poll every 10 seconds for cross-device syncs
       syncInterval = setInterval(syncUserBalance, 10000);
     } else {
-      // Logged out: fallback to demo mode with demo wallet balance
+      // Guest fallback
       setAccount(prev => ({
         ...prev,
         mode: 'demo',
         balance: 10000.00,
-        id: nextAccountId
+        id: 'demo-temp-acc'
       }));
       setRealAccountBalance(0.00);
     }
 
-    // Update the ref right away
-    prevAccountIdRef.current = nextAccountId;
+    // Update synchronization checkpoint ref
+    prevPartitionIdRef.current = targetPartitionId;
 
     return () => {
       if (syncInterval) clearInterval(syncInterval);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, account.mode]);
 
   // Limit/Market Trade inputs
   const [spotPriceLimit, setSpotPriceLimit] = useState<number>(activeAsset.price);
@@ -426,12 +428,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('lwex_account', JSON.stringify(account));
     
-    // Only write data if they belong together and match the current account ID
-    // This blocks the race condition during login/logout transitions
-    if (account.id === prevAccountIdRef.current) {
-      localStorage.setItem(`lwex_history_${account.id}`, JSON.stringify(tradeHistory));
-      localStorage.setItem(`lwex_active_contracts_${account.id}`, JSON.stringify(activeContracts));
-      localStorage.setItem(`lwex_price_alerts_${account.id}`, JSON.stringify(priceAlerts));
+    // Only write data if they belong together and match the current active partition ID
+    // This blocks the race condition during login/logout/switch transitions
+    const currentUserIdStr = currentUser ? currentUser.id : 'guest';
+    const currentMode = currentUser ? account.mode : 'demo';
+    const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
+
+    if (currentPartitionId === prevPartitionIdRef.current) {
+      localStorage.setItem(`lwex_history_${currentPartitionId}`, JSON.stringify(tradeHistory));
+      localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
+      localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
     }
     
     localStorage.setItem('lwex_real_balance', String(realAccountBalance));
