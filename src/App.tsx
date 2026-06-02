@@ -120,17 +120,26 @@ export default function App() {
     }
   }, [theme]);
 
+  const TICK_INTERVAL_MS = 1000;
+  const APP_VERSION = '1.0.1';
+
   // Account states: Loaded from storage
   const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('lwex_current_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse current user from storage', e);
+    try {
+      const version = localStorage.getItem('lwex_version');
+      if (version !== APP_VERSION) {
+        // Clear all storage on version change
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('lwex_')) localStorage.removeItem(key);
+        });
+        localStorage.setItem('lwex_version', APP_VERSION);
+        return null;
       }
+      const saved = localStorage.getItem('lwex_current_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      localStorage.removeItem('lwex_current_user');
     }
-    // Default to logged out on first load for new users to prevent credential overlap
     return null;
   });
 
@@ -988,7 +997,6 @@ export default function App() {
     }));
   };
 
-  // Core background ticker generator loop
   useEffect(() => {
     const loopInterval = setInterval(() => {
       const now = getServerTime();
@@ -1348,7 +1356,7 @@ export default function App() {
     const getDurationMs = (duration: number, unit: 'ticks' | 'seconds' | 'minutes') => {
       if (unit === 'minutes') return duration * 60 * 1000;
       if (unit === 'seconds') return duration * 1000;
-      return duration * 1000;
+      return duration * TICK_INTERVAL_MS;
     };
 
     const newContract: Contract = {
