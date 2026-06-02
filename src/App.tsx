@@ -3259,8 +3259,6 @@ export default function App() {
         triggerToast={triggerToast}
       />
 
-      {isInitializing && <div className="fixed inset-0 z-[10000] bg-slate-950/90 flex items-center justify-center text-white font-mono text-lg">Initializing Application...</div>}
-
     </div>
   );
 }
