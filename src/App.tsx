@@ -2048,9 +2048,9 @@ export default function App() {
                               <span className="text-[9px] text-slate-500 font-bold uppercase">{asset.symbol}/USDT</span>
                             </div>
                             <div className="text-right font-mono text-[10px] shrink-0">
-                              <div className="font-extrabold text-slate-200">${asset.price.toFixed(asset.decimals)}</div>
+                              <div className="font-extrabold text-slate-200">${asset?.price?.toFixed(asset?.decimals ?? 2) ?? '0.00'}</div>
                               <div className={`text-[9px] font-black ${asset.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%
+                                {asset.change !== undefined ? (asset.change >= 0 ? '+' : '') + asset.change.toFixed(2) + '%' : '0.00%'}
                               </div>
                             </div>
                           </button>
@@ -2356,9 +2356,9 @@ export default function App() {
               >
                 <span className={`h-2 w-2 rounded-full ${starredMarkets.includes(coin.id) ? 'bg-amber-400' : 'bg-slate-600'}`} />
                 <span className="font-extrabold">{coin.symbol}/USDT</span>
-                <span className="font-bold text-slate-300">{coin.price.toFixed(coin.decimals)}</span>
+                <span className="font-bold text-slate-300">{coin?.price?.toFixed(coin?.decimals ?? 2) ?? '0.00'}</span>
                 <span className={`font-black tracking-tight text-[10px] ${plus ? 'text-emerald-500' : 'text-rose-500'}`}>
-                  {plus ? '+' : ''}{coin.change.toFixed(2)}%
+                  {plus ? '+' : ''}{coin?.change?.toFixed(2) ?? '0.00'}%
                 </span>
               </div>
             );
@@ -2409,7 +2409,7 @@ export default function App() {
                 <div>
                   <span className="block text-[9px] text-slate-450 uppercase font-black tracking-wider">24h delta</span>
                   <span className={`text-xs font-bold leading-none ${activeAsset.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {activeAsset.change >= 0 ? '+' : ''}{activeAsset.change.toFixed(2)}%
+                    {activeAsset.change !== undefined ? (activeAsset.change >= 0 ? '+' : '') + activeAsset.change.toFixed(2) + '%' : '0.00%'}
                   </span>
                 </div>
                 <div>

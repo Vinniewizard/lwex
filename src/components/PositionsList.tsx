@@ -299,13 +299,13 @@ export default function PositionsList({
                               {item.direction === 'rise' ? 'BUY LONG' : item.direction === 'fall' ? 'SELL SHORT' : item.direction.toUpperCase()}
                             </span>
                           </td>
-                          <td className="p-2.5 text-right font-mono text-gray-400">{item.entryPrice.toFixed(4)}</td>
-                          <td className="p-2.5 text-right font-mono text-gray-400">{item.exitPrice.toFixed(4)}</td>
-                          <td className="p-2.5 text-right text-gray-400">${item.stake.toFixed(2)}</td>
+                          <td className="p-2.5 text-right font-mono text-gray-400">{item.entryPrice?.toFixed(4) ?? '0.0000'}</td>
+                          <td className="p-2.5 text-right font-mono text-gray-400">{item.exitPrice?.toFixed(4) ?? '0.0000'}</td>
+                          <td className="p-2.5 text-right text-gray-400">${item.stake?.toFixed(2) ?? '0.00'}</td>
                           <td className={`p-2.5 text-right font-semibold ${
                             isProfit ? "text-green-600" : "text-gray-400"
                           }`}>
-                            {isProfit ? '+' : ''}${item.profit.toFixed(2)}
+                            {isProfit ? '+' : ''}${item.profit?.toFixed(2) ?? '0.00'}
                           </td>
                           <td className="p-2.5 text-center">
                             {item.status === 'won' && (

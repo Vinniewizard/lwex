@@ -455,7 +455,7 @@ export default function Chart({
         ctx.lineTo(width - 75, gridY);
         ctx.stroke();
 
-        ctx.fillText(priceVal.toFixed(asset.decimals), width - 70, gridY + 3);
+        ctx.fillText(priceVal?.toFixed(asset.decimals) ?? '0.00', width - 70, gridY + 3);
       }
 
       // --- DRAW PRICE TRENDS ---
@@ -602,7 +602,7 @@ export default function Chart({
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText(latestTick.price.toFixed(asset.decimals), width - 68, latestY + 4);
+      ctx.fillText(latestTick.price?.toFixed(asset.decimals) ?? '0.00', width - 68, latestY + 4);
 
       // --- ACTIVE POSITION OVERLAYS ---
       activeContracts.forEach((contract) => {
@@ -767,7 +767,7 @@ export default function Chart({
           {ticks.length > 0 && (
             <div className="font-mono text-xs font-bold">
               USD <span className={asset.change >= 0 ? "text-green-500" : "text-red-500"}>
-                {ticks[ticks.length - 1].price.toFixed(asset.decimals)}
+                {ticks[ticks.length - 1]?.price?.toFixed(asset.decimals) ?? '0.00'}
               </span>
             </div>
           )}
@@ -982,7 +982,7 @@ export default function Chart({
             >
               <div className="flex items-center space-x-1.5">
                 <span className="text-gray-400">PRICE:</span>
-                <span className={isDark ? "text-violet-400" : "text-indigo-600"}>${hoverPriceCursor.toFixed(asset.decimals)}</span>
+                <span className={isDark ? "text-violet-400" : "text-indigo-600"}>${hoverPriceCursor?.toFixed(asset.decimals) ?? '0.00'}</span>
               </div>
               <div className="flex items-center space-x-1.5 text-[9px] opacity-85">
                 <span className="text-gray-400">TIME:</span>
@@ -1016,7 +1016,7 @@ export default function Chart({
               <div className="flex justify-between">
                 <span className="text-gray-400">Price:</span>
                 <span className="font-bold">
-                  ${ticks[hoveredIndex].price.toFixed(asset.decimals)}
+                  ${ticks[hoveredIndex]?.price?.toFixed(asset.decimals) ?? '0.00'}
                 </span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
@@ -1028,7 +1028,7 @@ export default function Chart({
                 </span>
                 <span className={indicatorConfig.sma.enabled ? 'text-sky-400 font-bold' : 'text-gray-400'}>
                   {smaArray[hoveredIndex] !== null && smaArray[hoveredIndex] !== undefined
-                    ? smaArray[hoveredIndex]!.toFixed(asset.decimals)
+                    ? smaArray[hoveredIndex]?.toFixed(asset.decimals) ?? '0.00'
                     : '—'}
                 </span>
               </div>
@@ -1041,7 +1041,7 @@ export default function Chart({
                 </span>
                 <span className={indicatorConfig.ema.enabled ? 'text-orange-400 font-bold' : 'text-gray-400'}>
                   {emaArray[hoveredIndex] !== null && emaArray[hoveredIndex] !== undefined
-                    ? emaArray[hoveredIndex]!.toFixed(asset.decimals)
+                    ? emaArray[hoveredIndex]?.toFixed(asset.decimals) ?? '0.00'
                     : '—'}
                 </span>
               </div>
@@ -1054,7 +1054,7 @@ export default function Chart({
                 </span>
                 <span className={indicatorConfig.rsi.enabled ? 'text-purple-400 font-bold' : 'text-gray-400'}>
                   {rsiArray[hoveredIndex] !== null && rsiArray[hoveredIndex] !== undefined
-                    ? rsiArray[hoveredIndex]!.toFixed(2)
+                    ? rsiArray[hoveredIndex]?.toFixed(2) ?? '0.00'
                     : '—'}
                 </span>
               </div>

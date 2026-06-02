@@ -44,6 +44,7 @@ export default function TradeControls({
     }
   };
 
+  if (!selectedAsset) return null;
   const isDark = theme === 'dark';
 
   // Auto adjusting durations when changing units
@@ -168,7 +169,7 @@ export default function TradeControls({
                     <span className="text-[9px] text-gray-400 font-mono uppercase">{asset.symbol}</span>
                   </div>
                   <div className="text-right font-mono text-[10px]">
-                    <div className="font-bold">{asset.price.toFixed(asset.decimals)}</div>
+                    <div className="font-bold">{asset?.price?.toFixed(asset?.decimals ?? 2)}</div>
                     <div className={asset.change >= 0 ? "text-green-600" : "text-red-500"}>
                       {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%
                     </div>
