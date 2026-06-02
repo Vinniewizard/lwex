@@ -1189,8 +1189,8 @@ export default function App() {
             const hasWon = finalStatus === 'won';
             triggerToast(
               hasWon
-                ? `Contract Succeeded! Cleared profit +$${netProfit.toFixed(2)} on ${contract.assetSymbol}.`
-                : `Contract Expired. Loss -$${Math.abs(netProfit).toFixed(2)} on ${contract.assetSymbol}.`,
+                ? `Trade Success! +$${netProfit.toFixed(2)} added to your balance.`
+                : `Trade Expired! -$${Math.abs(netProfit).toFixed(2)} deducted from your balance.`,
               hasWon
             );
 
