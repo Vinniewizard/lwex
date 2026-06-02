@@ -21,16 +21,37 @@ export default function PositionsList({
   onChangeTab,
   cashoutMode = 'enabled'
 }: PositionsListProps) {
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'won' | 'lost'>('all');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'won' | 'lost' | 'sold'>('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [assetSymbolFilter, setAssetSymbolFilter] = useState<string>('');
+  
   const isDark = theme === 'dark';
 
   const formatValue = (val: number) => {
     return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const filteredHistory = historyFilter === 'all' 
-    ? closedContracts 
-    : closedContracts.filter(c => c.status === historyFilter);
+  const filteredHistory = closedContracts.filter(c => {
+    // 1. Status Check
+    if (historyFilter !== 'all' && c.status !== historyFilter) return false;
+    
+    // 2. Asset Symbol Check
+    if (assetSymbolFilter && !c.assetSymbol.toLowerCase().includes(assetSymbolFilter.toLowerCase())) {
+        return false;
+    }
+
+    // 3. Date Range Check
+    if (dateRangeFilter !== 'all') {
+      const time = c.purchaseTime;
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (dateRangeFilter === 'today' && (now - time > oneDay)) return false;
+      if (dateRangeFilter === 'week' && (now - time > 7 * oneDay)) return false;
+      if (dateRangeFilter === 'month' && (now - time > 30 * oneDay)) return false;
+    }
+    
+    return true;
+  });
 
   // Compute overall statistics
   const totalTrades = closedContracts.length;
@@ -237,26 +258,60 @@ export default function PositionsList({
         {activeTab === 'statements' && (
           <div className="space-y-1.5">
             {closedContracts.length > 0 && (
-              <div className="flex justify-end px-2 pt-2">
-                <div className={`flex rounded overflow-hidden text-[10px] uppercase font-bold tracking-wider border ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
-                  <button 
-                    onClick={() => setHistoryFilter('all')} 
-                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'all' ? (isDark ? 'bg-slate-800 text-white' : 'bg-gray-100 text-black') : (isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black')}`}
-                  >
-                    All
-                  </button>
-                  <button 
-                    onClick={() => setHistoryFilter('won')} 
-                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'won' ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600') : (isDark ? 'text-gray-400 hover:text-emerald-400' : 'text-gray-500 hover:text-emerald-600')}`}
-                  >
-                    Won
-                  </button>
-                  <button 
-                    onClick={() => setHistoryFilter('lost')} 
-                    className={`px-3 py-1.5 transition-colors ${historyFilter === 'lost' ? (isDark ? 'bg-red-500/20 text-red-400' : 'bg-red-50 text-red-600') : (isDark ? 'text-gray-400 hover:text-red-400' : 'text-gray-500 hover:text-red-600')}`}
-                  >
-                    Lost
-                  </button>
+              <div className="flex flex-col sm:flex-row gap-2 justify-between items-start sm:items-center px-2 pt-2 pb-1">
+                {/* Search / Symbol Filter */}
+                <div className={`flex items-center px-2 py-1 rounded border overflow-hidden ${isDark ? 'border-slate-800 bg-slate-900/50' : 'border-gray-200 bg-gray-50'}`}>
+                  <Filter className="w-3 h-3 text-slate-400 mr-2" />
+                  <input 
+                    type="text" 
+                    placeholder="Filter symbol (e.g. BTC)" 
+                    value={assetSymbolFilter}
+                    onChange={(e) => setAssetSymbolFilter(e.target.value)}
+                    className={`bg-transparent text-[10px] font-mono tracking-wider outline-none w-32 ${isDark ? 'text-white' : 'text-black'}`}
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
+                  {/* Date Range Filter */}
+                  <div className={`flex rounded overflow-hidden text-[10px] uppercase font-bold tracking-wider border ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
+                    {['all', 'today', 'week', 'month'].map((range) => (
+                      <button 
+                        key={range}
+                        onClick={() => setDateRangeFilter(range as any)} 
+                        className={`px-2 py-1 transition-colors ${dateRangeFilter === range ? (isDark ? 'bg-slate-800 text-white' : 'bg-gray-200 text-black') : (isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black')}`}
+                      >
+                        {range}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className={`flex rounded overflow-hidden text-[10px] uppercase font-bold tracking-wider border ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
+                    <button 
+                      onClick={() => setHistoryFilter('all')} 
+                      className={`px-3 py-1.5 transition-colors ${historyFilter === 'all' ? (isDark ? 'bg-slate-800 text-white' : 'bg-gray-100 text-black') : (isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black')}`}
+                    >
+                      All
+                    </button>
+                    <button 
+                      onClick={() => setHistoryFilter('won')} 
+                      className={`px-3 py-1.5 transition-colors ${historyFilter === 'won' ? (isDark ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600') : (isDark ? 'text-gray-400 hover:text-emerald-400' : 'text-gray-500 hover:text-emerald-600')}`}
+                    >
+                      Won
+                    </button>
+                    <button 
+                      onClick={() => setHistoryFilter('lost')} 
+                      className={`px-3 py-1.5 transition-colors ${historyFilter === 'lost' ? (isDark ? 'bg-red-500/20 text-red-400' : 'bg-red-50 text-red-600') : (isDark ? 'text-gray-400 hover:text-red-400' : 'text-gray-500 hover:text-red-600')}`}
+                    >
+                      Lost
+                    </button>
+                    <button 
+                      onClick={() => setHistoryFilter('sold')} 
+                      className={`px-3 py-1.5 transition-colors ${historyFilter === 'sold' ? (isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-50 text-blue-600') : (isDark ? 'text-gray-400 hover:text-blue-400' : 'text-gray-500 hover:text-blue-600')}`}
+                    >
+                      Sold
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

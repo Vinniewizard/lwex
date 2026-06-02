@@ -10,6 +10,7 @@ import InviteModal from './components/InviteModal';
 import AdminDashboard from './components/AdminDashboard';
 import AuthModal from './components/AuthModal';
 import PriceAlertsManager from './components/PriceAlertsManager';
+import Walkthrough from './components/Walkthrough';
 import { ASSETSList } from './data';
 import { Asset, Tick, Contract, TradeHistoryItem, Account, IndicatorConfig, ContractType, PriceAlert } from './types';
 import { 
@@ -181,6 +182,25 @@ export default function App() {
   const [marketSearchText, setMarketSearchText] = useState('');
   const [selectedMarketTab, setSelectedMarketTab] = useState<'usdt' | 'btc' | 'indices' | 'favorites'>('indices');
   const [newsDetail, setNewsDetail] = useState<any>(null);
+
+  const [runWalkthrough, setRunWalkthrough] = useState(false);
+
+  useEffect(() => {
+    // Only run walkthrough for actual users (not demo) if they haven't seen it
+    if (currentUser) {
+      const hasSeen = localStorage.getItem(`lwex_walkthrough_seen_${currentUser.id}`);
+      if (!hasSeen) {
+        setRunWalkthrough(true);
+      }
+    }
+  }, [currentUser]);
+
+  const handleWalkthroughEnd = () => {
+    setRunWalkthrough(false);
+    if (currentUser) {
+      localStorage.setItem(`lwex_walkthrough_seen_${currentUser.id}`, 'true');
+    }
+  };
 
   // Asset configurations
   const [activeAsset, setActiveAsset] = useState<Asset>(() => {
@@ -578,7 +598,7 @@ export default function App() {
       syncInterval = setInterval(() => {
         syncUserBalance();
         pullUserState();
-      }, 5000);
+      }, 1500); // Increased rate for faster cross-device sync
     } else {
       // Guest fallback
       setAccount(prev => ({
@@ -1695,6 +1715,8 @@ export default function App() {
   return (
     <div className={`w-screen h-screen font-sans ${isDark ? 'elegant-radial-bg bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} flex flex-row transition-colors duration-200 overflow-hidden relative`}>
       {isDark && <div className="absolute inset-0 radial-dots-grid pointer-events-none opacity-20" />}
+      
+      <Walkthrough run={runWalkthrough} onFinish={handleWalkthroughEnd} isDark={isDark} />
 
       {/* FLOAT NOTISTACK TOASTER */}
       {visualNotice && (
@@ -1739,7 +1761,7 @@ export default function App() {
         {currentUser ? (
           <div 
             onClick={() => setIsSettingsOpen(true)}
-            className={`p-4 mx-3 my-3 rounded-xl bg-slate-900/40 hover:bg-slate-900/60 border border-slate-900/80 flex items-center transition-colors cursor-pointer ${desktopSidebarCollapsed ? 'lg:justify-center p-2' : 'space-x-3'}`} 
+            className={`tour-account p-4 mx-3 my-3 rounded-xl bg-slate-900/40 hover:bg-slate-900/60 border border-slate-900/80 flex items-center transition-colors cursor-pointer ${desktopSidebarCollapsed ? 'lg:justify-center p-2' : 'space-x-3'}`} 
             title={desktopSidebarCollapsed ? `${currentUser?.fullName} (VIP-2) - Settings` : "Click to view settings"}
           >
             <div className="relative shrink-0">
@@ -2021,7 +2043,7 @@ export default function App() {
               <button 
                 id="header-asset-select-button"
                 onClick={() => setAssetDropdownOpen(!assetDropdownOpen)}
-                className="flex items-center space-x-1.5 sm:space-x-2 border border-slate-800 bg-slate-900/40 hover:bg-slate-900/100 transition-all px-2 md:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-mono shrink-0 cursor-pointer text-slate-200 focus:outline-none"
+                className="tour-asset-selector flex items-center space-x-1.5 sm:space-x-2 border border-slate-800 bg-slate-900/40 hover:bg-slate-900/100 transition-all px-2 md:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-mono shrink-0 cursor-pointer text-slate-200 focus:outline-none"
               >
                 <div className="flex flex-col text-left">
                   <span className="font-bold text-slate-200 text-[10px] md:text-xs truncate max-w-[80px] xs:max-w-[100px] sm:max-w-[120px]">{activeAsset.name}</span>
@@ -2476,7 +2498,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
               
               {/* LEFT SIDE: Interactive Trading Grid (Chart) */}
-              <div className={`md:col-span-7 lg:col-span-8 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
+              <div className={`tour-chart md:col-span-7 lg:col-span-8 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
                 
                 {/* Horizontal drawing toolbar on Top of chart */}
                 <div className="w-full flex items-center justify-start px-2 py-1 space-x-2 border-b border-slate-900 shrink-0 select-none">
@@ -2542,7 +2564,7 @@ export default function App() {
               </div>
 
               {/* RIGHT SIDE: Compact Multi-column Order Execution controls */}
-              <div className={`md:col-span-5 lg:col-span-4 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
+              <div className={`tour-trade-controls md:col-span-5 lg:col-span-4 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
                 
                 {/* Panel Title & Type Selector */}
                 <div className="space-y-3 shrink-0">
@@ -2822,15 +2844,17 @@ export default function App() {
                 </div>
               </div>
 
-              <PositionsList 
-                theme={theme}
-                activeContracts={activeContracts}
-                closedContracts={tradeHistory}
-                onSellContract={handleSellContractEarly}
-                activeTab={positionsTab}
-                onChangeTab={handlePositionsTabChange}
-                cashoutMode={(gameSettings as any)?.cashoutMode || 'enabled'}
-              />
+              <div className="tour-positions flex flex-col flex-1 mt-4 md:mt-0 col-span-12 relative shadow-lg">
+                <PositionsList 
+                  theme={theme}
+                  activeContracts={activeContracts}
+                  closedContracts={tradeHistory}
+                  onSellContract={handleSellContractEarly}
+                  activeTab={positionsTab}
+                  onChangeTab={handlePositionsTabChange}
+                  cashoutMode={(gameSettings as any)?.cashoutMode || 'enabled'}
+                />
+              </div>
             </div>
           </div>
           
