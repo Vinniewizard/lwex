@@ -531,13 +531,22 @@ export default function App() {
     let nextAlerts: PriceAlert[] = [];
 
     if (savedContracts) {
-      try { nextContracts = JSON.parse(savedContracts); } catch (e) {}
+      try { 
+        const parsed = JSON.parse(savedContracts);
+        if (Array.isArray(parsed)) nextContracts = parsed;
+      } catch (e) {}
     }
     if (savedHistory) {
-      try { nextHistory = JSON.parse(savedHistory); } catch (e) {}
+      try { 
+        const parsed = JSON.parse(savedHistory);
+        if (Array.isArray(parsed)) nextHistory = parsed;
+      } catch (e) {}
     }
     if (savedAlerts) {
-      try { nextAlerts = JSON.parse(savedAlerts); } catch (e) {}
+      try { 
+        const parsed = JSON.parse(savedAlerts);
+        if (Array.isArray(parsed)) nextAlerts = parsed;
+      } catch (e) {}
     }
 
     // Set portfolio states
@@ -1255,7 +1264,7 @@ export default function App() {
             currentProfit,
             ticksPassed,
             sellPrice,
-            ticksHistory: [...contract.ticksHistory, { time: now, price: nextPrice }]
+            ticksHistory: [...(Array.isArray(contract.ticksHistory) ? contract.ticksHistory : []), { time: now, price: nextPrice }]
           };
         }).filter(Boolean);
 
@@ -2402,8 +2411,8 @@ export default function App() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 text-xs font-mono w-full md:w-auto">
                 <div>
                   <span className="block text-[9px] text-slate-450 uppercase font-black tracking-wider">Index spot</span>
-                  <span className={`text-sm font-black ${activeAsset.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    ${activeAsset.price.toFixed(activeAsset.decimals)}
+                  <span className={`text-sm font-black ${activeAsset?.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    ${activeAsset?.price?.toFixed(activeAsset?.decimals ?? 2) ?? '0.00'}
                   </span>
                 </div>
                 <div>
@@ -2414,11 +2423,11 @@ export default function App() {
                 </div>
                 <div>
                   <span className="block text-[9px] text-slate-450 uppercase font-black tracking-wider">Volatility</span>
-                  <span className="text-xs font-bold text-slate-300">{activeAsset.volatility.toFixed(1)}%</span>
+                  <span className="text-xs font-bold text-slate-300">{activeAsset?.volatility?.toFixed(1) ?? '0.0'}%</span>
                 </div>
                 <div>
                   <span className="block text-[9px] text-slate-450 uppercase font-black tracking-wider">Drift bias</span>
-                  <span className="text-xs font-bold text-amber-400 font-mono">{(activeAsset.trendBias >= 0 ? '+' : '') + activeAsset.trendBias.toFixed(2)}</span>
+                  <span className="text-xs font-bold text-amber-400 font-mono">{(activeAsset?.trendBias >= 0 ? '+' : '') + (activeAsset?.trendBias?.toFixed(2) ?? '0.00')}</span>
                 </div>
               </div>
             </div>
@@ -2848,8 +2857,8 @@ export default function App() {
                   <div className="space-y-0.5 font-mono text-[10px]">
                     {askRows.map((row, idx) => (
                       <div key={idx} className="flex justify-between items-center hover:bg-slate-900/30 px-1 py-0.5 rounded">
-                        <span className="text-rose-500 font-bold">{row.price.toFixed(activeAsset.decimals > 2 ? 4 : 2)}</span>
-                        <span className="text-slate-400 text-right">{row.quantity.toFixed(2)}</span>
+                        <span className="text-rose-500 font-bold">{row?.price?.toFixed(activeAsset?.decimals > 2 ? 4 : 2) ?? '0.00'}</span>
+                        <span className="text-slate-400 text-right">{row?.quantity?.toFixed(2) ?? '0.00'}</span>
                       </div>
                     ))}
                   </div>
@@ -2857,7 +2866,7 @@ export default function App() {
                   {/* Spread indicator central display */}
                   <div className="border-t border-b border-slate-900 py-1 flex flex-col items-center select-none bg-slate-900/10">
                     <span className="text-xs font-black text-emerald-500 font-mono tracking-tighter">
-                      ${activeAsset.price.toFixed(activeAsset.decimals)}
+                      ${activeAsset?.price?.toFixed(activeAsset?.decimals ?? 2) ?? '0.00'}
                     </span>
                     <span className="text-[8px] text-slate-500 tracking-wider">Spread 0.05 (USD Conversion)</span>
                   </div>
@@ -2866,8 +2875,8 @@ export default function App() {
                   <div className="space-y-0.5 font-mono text-[10px]">
                     {bidRows.map((row, idx) => (
                       <div key={idx} className="flex justify-between items-center hover:bg-slate-900/30 px-1 py-0.5 rounded">
-                        <span className="text-emerald-500 font-bold">{row.price.toFixed(activeAsset.decimals > 2 ? 4 : 2)}</span>
-                        <span className="text-slate-400 text-right">{row.quantity.toFixed(2)}</span>
+                        <span className="text-emerald-500 font-bold">{row?.price?.toFixed(activeAsset?.decimals > 2 ? 4 : 2) ?? '0.00'}</span>
+                        <span className="text-slate-400 text-right">{row?.quantity?.toFixed(2) ?? '0.00'}</span>
                       </div>
                     ))}
                   </div>
@@ -2950,9 +2959,9 @@ export default function App() {
                             <span className="font-mono text-[10px] text-slate-200">{item.symbol}</span>
                           </div>
                           <div className="text-right font-mono text-[9px] -space-y-0.5">
-                            <div className="text-slate-300 font-extrabold leading-none">{item.price.toFixed(item.decimals > 2 ? 4 : 2)}</div>
-                            <div className={item.change >= 0 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
-                              {item.change >= 0 ? '+' : ''}{item.change.toFixed(1)}%
+                            <div className="text-slate-300 font-extrabold leading-none">{item?.price?.toFixed(item?.decimals > 2 ? 4 : 2) ?? '0.00'}</div>
+                            <div className={item?.change >= 0 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                              {item?.change !== undefined ? (item.change >= 0 ? '+' : '') + item.change.toFixed(1) + '%' : '0.0%'}
                             </div>
                           </div>
                         </div>

@@ -47,7 +47,7 @@ export default function PriceAlertsManager({
   // Sync input value with current active price whenever asset changes
   useEffect(() => {
     if (activeAsset) {
-      setAlertPrice(activeAsset.price.toFixed(activeAsset.decimals));
+      setAlertPrice((activeAsset.price?.toFixed(activeAsset.decimals)) ?? '0.00');
     }
   }, [activeAsset]);
 
@@ -62,9 +62,9 @@ export default function PriceAlertsManager({
 
   // Quick percent pricing helpers
   const applyPercentOffset = (percent: number) => {
-    const base = activeAsset.price;
+    const base = activeAsset.price ?? 0;
     const offsetPrice = base * (1 + percent / 100);
-    setAlertPrice(offsetPrice.toFixed(activeAsset.decimals));
+    setAlertPrice((offsetPrice?.toFixed(activeAsset.decimals)) ?? '0.00');
   };
 
   // Filter alerts specifically for the active asset vs others
@@ -145,7 +145,7 @@ export default function PriceAlertsManager({
             />
             <button
               type="button"
-              onClick={() => setAlertPrice(activeAsset.price.toFixed(activeAsset.decimals))}
+              onClick={() => setAlertPrice((activeAsset.price?.toFixed(activeAsset.decimals)) ?? '0.00')}
               className={`px-2.5 h-full text-[9px] font-bold border-l transition-colors hover:bg-purple-550/10 ${
                 isDark ? 'border-slate-800 text-purple-400' : 'border-gray-200 text-purple-600'
               }`}
@@ -302,7 +302,7 @@ export default function PriceAlertsManager({
                                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
                                 : 'bg-slate-550/5 text-gray-400 border-transparent'
                             }`}>
-                              {proximity.toFixed(1)}% close
+                              {proximity?.toFixed(1) ?? '0.0'}% close
                             </span>
                           </div>
                         )}

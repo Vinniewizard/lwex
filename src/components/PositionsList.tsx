@@ -147,13 +147,13 @@ export default function PositionsList({
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <span className="block text-[9px] text-gray-400 font-bold uppercase">Barrier Level</span>
-                          <span className="font-mono font-bold">{contract.entryPrice.toFixed(4)}</span>
+                          <span className="font-mono font-bold">{contract.entryPrice?.toFixed(4) ?? '0.0000'}</span>
                         </div>
                         <div className="text-right">
                           <span className="block text-[9px] text-gray-400 font-bold uppercase">Active Price</span>
                           <span className={`font-mono font-bold ${
                             isProfit ? "text-green-600" : "text-red-500"
-                          }`}>{contract.currentPrice.toFixed(4)}</span>
+                          }`}>{contract.currentPrice?.toFixed(4) ?? '0.0000'}</span>
                         </div>
                       </div>
 
@@ -195,7 +195,7 @@ export default function PositionsList({
                           <span className={`font-mono text-xs font-extrabold tracking-tight ${
                             isProfit ? 'text-green-600' : 'text-red-500'
                           }`}>
-                            {isProfit ? '+' : ''}${contract.currentProfit.toFixed(2)}
+                            {isProfit ? '+' : ''}${contract.currentProfit?.toFixed(2) ?? '0.00'}
                           </span>
                         </div>
 
