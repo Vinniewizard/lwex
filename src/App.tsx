@@ -661,10 +661,8 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   
   useEffect(() => {
-    if (!currentUser) {
-      setIsAuthOpen(true);
-    }
-  }, []);
+    setIsAuthOpen(!currentUser);
+  }, [currentUser]);
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [authModalInitialView, setAuthModalInitialView] = useState<'login' | 'register' | 'forgot_password' | 'reset_password'>('login');
