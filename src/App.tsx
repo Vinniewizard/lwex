@@ -532,7 +532,7 @@ export default function App() {
       syncInterval = setInterval(() => {
         syncUserBalance();
         pullUserState();
-      }, 2000);
+      }, 5000);
     } else {
       // Guest fallback
       setAccount(prev => ({
