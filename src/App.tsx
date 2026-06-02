@@ -471,8 +471,13 @@ export default function App() {
               return prevUser;
             });
           }
+        } else if (res.status === 401) {
+          setCurrentUser(null);
+          localStorage.removeItem('lwex_current_user');
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error('Failed to sync user:', err);
+      }
     };
 
     // Calculate current target partition key
