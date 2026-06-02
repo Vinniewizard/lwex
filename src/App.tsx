@@ -1280,6 +1280,17 @@ export default function App() {
     return () => clearInterval(loopInterval);
   }, []);
 
+  const handleLogout = () => {
+    localStorage.removeItem('lwex_current_user');
+    localStorage.removeItem('lwex_account');
+    localStorage.removeItem('lwex_real_balance');
+    localStorage.removeItem('lwex_active_contracts_demo');
+    localStorage.removeItem('lwex_active_contracts_real');
+
+    setCurrentUser(null);
+    window.location.reload();
+  };
+
   const handlePurchaseContract = (config: {
     type: ContractType;
     direction: any;
@@ -3176,7 +3187,7 @@ export default function App() {
         theme={theme}
         currentUser={currentUser}
         onUpdateUser={setCurrentUser}
-        onLogout={() => setCurrentUser(null)}
+        onLogout={handleLogout}
       />
 
       <InviteModal 
