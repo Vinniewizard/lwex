@@ -122,6 +122,7 @@ export default function App() {
 
   const TICK_INTERVAL_MS = 1000;
   const APP_VERSION = '1.0.1';
+  const [isInitializing, setIsInitializing] = useState(false);
 
   // Account states: Loaded from storage
   const [currentUser, setCurrentUser] = useState<any>(() => {
@@ -408,7 +409,21 @@ export default function App() {
           } else {
             hasSyncedFromServerRef.current = true;
           }
+        } else {
+          console.error('Recovery: Pull user state returned success: false', data);
+          // Recovery mode
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('lwex_') && key !== 'lwex_version') localStorage.removeItem(key);
+          });
+          window.location.reload();
         }
+      } else if (res.status === 401) {
+        // Clear all storage on auth failure to ensure fresh state
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('lwex_') && key !== 'lwex_version') localStorage.removeItem(key);
+        });
+        setCurrentUser(null);
+        window.location.reload();
       }
     } catch (e) {
       console.error('Failed to pull user state from server', e);
@@ -416,6 +431,14 @@ export default function App() {
       isPullingRef.current = false;
     }
   };
+
+  // Immediate session validation on mount
+  useEffect(() => {
+    if (currentUser) {
+      setIsInitializing(true);
+      pullUserState().finally(() => setIsInitializing(false));
+    }
+  }, []);
 
   const pushUserState = async (contracts: Contract[], history: TradeHistoryItem[], alerts: PriceAlert[]) => {
     const userVal = currentUserRef.current;
@@ -1298,14 +1321,19 @@ export default function App() {
     return () => clearInterval(loopInterval);
   }, []);
 
+  const handleUserUpdate = (user: any) => {
+    // Clear storage on user switch to ensure fresh state
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('lwex_') && key !== 'lwex_version') localStorage.removeItem(key);
+    });
+    if (user) {
+      localStorage.setItem('lwex_current_user', JSON.stringify(user));
+    }
+    setCurrentUser(user);
+  };
+    
   const handleLogout = () => {
-    localStorage.removeItem('lwex_current_user');
-    localStorage.removeItem('lwex_account');
-    localStorage.removeItem('lwex_real_balance');
-    localStorage.removeItem('lwex_active_contracts_demo');
-    localStorage.removeItem('lwex_active_contracts_real');
-
-    setCurrentUser(null);
+    handleUserUpdate(null);
     window.location.reload();
   };
 
@@ -3204,7 +3232,7 @@ export default function App() {
         account={account}
         theme={theme}
         currentUser={currentUser}
-        onUpdateUser={setCurrentUser}
+        onUpdateUser={handleUserUpdate}
         onLogout={handleLogout}
       />
 
@@ -3220,7 +3248,7 @@ export default function App() {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         theme={theme}
-        onSuccess={setCurrentUser}
+        onSuccess={handleUserUpdate}
         initialView={authModalInitialView}
       />
 
@@ -3230,6 +3258,8 @@ export default function App() {
         theme={theme}
         triggerToast={triggerToast}
       />
+
+      {isInitializing && <div className="fixed inset-0 z-[10000] bg-slate-950/90 flex items-center justify-center text-white font-mono text-lg">Initializing Application...</div>}
 
     </div>
   );
