@@ -653,7 +653,14 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(!currentUser);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  
+  useEffect(() => {
+    if (!currentUser) {
+      setIsAuthOpen(true);
+    }
+  }, []);
+
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [authModalInitialView, setAuthModalInitialView] = useState<'login' | 'register' | 'forgot_password' | 'reset_password'>('login');
   
