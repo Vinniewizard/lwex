@@ -57,7 +57,6 @@ export default function Walkthrough({ run, onFinish, isDark }: WalkthroughProps)
       run={run}
       continuous
       scrollToFirstStep
-      showProgress
       showSkipButton
       callback={handleJoyrideCallback}
       styles={{

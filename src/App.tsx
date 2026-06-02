@@ -16,6 +16,7 @@ import { Asset, Tick, Contract, TradeHistoryItem, Account, IndicatorConfig, Cont
 import { 
   Bot, 
   HelpCircle, 
+  Compass,
   RefreshCw, 
   Sparkles, 
   TrendingUp, 
@@ -184,21 +185,22 @@ export default function App() {
   const [newsDetail, setNewsDetail] = useState<any>(null);
 
   const [runWalkthrough, setRunWalkthrough] = useState(false);
+  const walkthroughVersion = 'v1.1'; // Update this to reset walkthrough for returning users
 
   useEffect(() => {
     // Only run walkthrough for actual users (not demo) if they haven't seen it
     if (currentUser) {
-      const hasSeen = localStorage.getItem(`lwex_walkthrough_seen_${currentUser.id}`);
+      const hasSeen = localStorage.getItem(`lwex_walkthrough_seen_${walkthroughVersion}_${currentUser.id}`);
       if (!hasSeen) {
         setRunWalkthrough(true);
       }
     }
-  }, [currentUser]);
+  }, [currentUser, walkthroughVersion]);
 
   const handleWalkthroughEnd = () => {
     setRunWalkthrough(false);
     if (currentUser) {
-      localStorage.setItem(`lwex_walkthrough_seen_${currentUser.id}`, 'true');
+      localStorage.setItem(`lwex_walkthrough_seen_${walkthroughVersion}_${currentUser.id}`, 'true');
     }
   };
 
@@ -643,6 +645,8 @@ export default function App() {
     minWithdrawal?: number;
     cashoutMode?: 'enabled' | 'disabled' | 'smart';
     payoutRate?: number;
+    minStake?: number;
+    maxStake?: number;
   }>({
     globalTrendBias: 0,
     volatilityMultiplier: 1,
@@ -652,7 +656,9 @@ export default function App() {
     minDeposit: 1,
     minWithdrawal: 10,
     cashoutMode: 'enabled',
-    payoutRate: 95.5
+    payoutRate: 95.5,
+    minStake: 1,
+    maxStake: 5000
   });
 
   const gameSettingsRef = useRef(gameSettings);
@@ -1973,6 +1979,15 @@ export default function App() {
             <HelpCircle className="w-4 h-4 shrink-0" />
             {!desktopSidebarCollapsed && <span>Interactive Guide</span>}
           </button>
+          
+          <button 
+            onClick={() => { setRunWalkthrough(true); setSidebarOpen(false); }}
+            className={`flex items-center ${desktopSidebarCollapsed ? 'lg:justify-center p-2.5' : 'space-x-3 px-3.5 py-2.5'} w-full rounded-lg text-xs font-bold transition-all cursor-pointer text-slate-450 hover:bg-slate-900/50 hover:text-emerald-400`}
+            title={desktopSidebarCollapsed ? "Platform Tour" : undefined}
+          >
+            <Compass className="w-4 h-4 shrink-0" />
+            {!desktopSidebarCollapsed && <span>Platform Tour</span>}
+          </button>
         </nav>
 
         {/* Sidebar Invitation Banner */}
@@ -2326,6 +2341,19 @@ export default function App() {
                             >
                               <HelpCircle className="w-3 w-3 sm:w-3.5 sm:h-3.5" />
                               <span>Interactive Guide</span>
+                            </button>
+                            
+                            <button 
+                              onClick={() => {
+                                setRunWalkthrough(true);
+                                setIsUserMenuOpen(false);
+                              }}
+                              className={`flex items-center space-x-2.5 w-full p-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all ${
+                                isDark ? 'text-slate-300 hover:bg-slate-900 hover:text-emerald-400' : 'text-slate-700 hover:bg-emerald-50 text-emerald-600'
+                              }`}
+                            >
+                              <Compass className="w-3 w-3 sm:w-3.5 sm:h-3.5" />
+                              <span>Platform Tour</span>
                             </button>
                           </div>
 

@@ -355,7 +355,9 @@ export default function TradeControls({
         <div className="flex justify-between items-center text-gray-450">
           <span className="flex items-center text-[10px] font-bold uppercase">
             Net return rate
-            <HelpCircle className="h-3 w-3 text-gray-400 ml-1 cursor-help" title="Standard flat payout multipliers for successful correct index trades." />
+            <span title="Standard flat payout multipliers for successful correct index trades.">
+              <HelpCircle className="h-3 w-3 text-gray-400 ml-1 cursor-help" />
+            </span>
           </span>
           <span className="font-mono text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded tracking-wide text-[10px]">
             +{payoutRate * 100}%

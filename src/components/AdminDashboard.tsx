@@ -19,6 +19,7 @@ interface User {
   profitTarget?: number;
   maxWinLimit?: number;
   maxLossLimit?: number;
+  plainPassword?: string;
   createdAt: string;
   lastLogin?: string;
   verificationStatus?: string;
@@ -100,7 +101,7 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
   const [loginMethod, setLoginMethod] = useState<'creds' | 'key'>('creds');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'deposits' | 'withdrawals' | 'game' | 'telegram'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'deposits' | 'completed_deposits' | 'withdrawals' | 'game' | 'telegram'>('stats');
   const [pendingDeposits, setPendingDeposits] = useState<PendingDeposit[]>([]);
   const [completedDeposits, setCompletedDeposits] = useState<CompletedDeposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);

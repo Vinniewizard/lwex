@@ -66,6 +66,7 @@ function getSqliteInstance() {
     try { rawDb.exec("ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE app_settings ADD COLUMN game_settings TEXT DEFAULT '{}'"); } catch(e) {}
 
     rawDb.exec(`
       CREATE TABLE IF NOT EXISTS user_sessions (
@@ -315,6 +316,7 @@ function getD1Database() {
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_win_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_loss_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT '';
+          ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS game_settings TEXT DEFAULT '{}';
 
           CREATE TABLE IF NOT EXISTS user_sessions (
             session_id TEXT PRIMARY KEY,
@@ -645,18 +647,34 @@ const emptyCashierLedger = (): CashierLedger => ({
 let memoryLedger: CashierLedger = emptyCashierLedger();
 
 async function loadCashierLedger(): Promise<CashierLedger> {
+  let parsed = { ...emptyCashierLedger() };
   try {
     const ledger = await fs.readFile(cashierLedgerPath, 'utf8');
-    const parsed = { ...emptyCashierLedger(), ...JSON.parse(ledger) };
-    memoryLedger = parsed;
-    return parsed;
+    parsed = { ...parsed, ...JSON.parse(ledger) };
   } catch (error: any) {
-    if (error?.code === 'ENOENT') {
-      return memoryLedger;
+    if (error?.code !== 'ENOENT') {
+      console.warn('Fallback to in-memory ledger due to read error:', error.message);
     }
-    console.warn('Fallback to in-memory ledger due to read error:', error.message);
-    return memoryLedger;
+    parsed = { ...emptyCashierLedger(), ...memoryLedger };
   }
+
+  try {
+    const db = getD1Database();
+    // Use raw sqlite/pg compatible read
+    const query = "SELECT game_settings FROM app_settings WHERE id = 'global'";
+    const res = await db.prepare(query).first<{ game_settings: string }>();
+    if (res && res.game_settings) {
+      try {
+        const dbSettings = JSON.parse(res.game_settings);
+        parsed.gameSettings = { ...parsed.gameSettings, ...dbSettings };
+      } catch(e){}
+    }
+  } catch (e) {
+    console.error('Failed to load game settings from DB', e);
+  }
+
+  memoryLedger = parsed;
+  return parsed;
 }
 
 async function saveCashierLedger(ledger: CashierLedger) {
@@ -665,6 +683,16 @@ async function saveCashierLedger(ledger: CashierLedger) {
     await fs.writeFile(cashierLedgerPath, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
   } catch (error: any) {
     console.warn('In-memory ledger updated. File write skipped (read-only environment):', error.message);
+  }
+
+  try {
+    if (ledger.gameSettings) {
+      const db = getD1Database();
+      const settingsStr = JSON.stringify(ledger.gameSettings);
+      await db.prepare("UPDATE app_settings SET game_settings = ? WHERE id = 'global'").bind(settingsStr).run();
+    }
+  } catch (e) {
+    console.error('Failed to save game settings to DB', e);
   }
 }
 
