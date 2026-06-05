@@ -50,6 +50,28 @@ export default function Header({
   currentUser
 }: HeaderProps) {
   const [time, setTime] = useState(new Date());
+  const [prevBalance, setPrevBalance] = useState<number>(account.balance);
+  const [prevMode, setPrevMode] = useState<'demo' | 'real'>(account.mode);
+  const [flashType, setFlashType] = useState<'increase' | 'decrease' | null>(null);
+  const [flashKey, setFlashKey] = useState<number>(0);
+
+  useEffect(() => {
+    if (prevMode !== account.mode) {
+      setPrevMode(account.mode);
+      setPrevBalance(account.balance);
+      setFlashType(null);
+    } else if (account.balance !== prevBalance) {
+      const type = account.balance > prevBalance ? 'increase' : 'decrease';
+      setFlashType(type);
+      setFlashKey(prev => prev + 1);
+      setPrevBalance(account.balance);
+
+      const timer = setTimeout(() => {
+        setFlashType(null);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [account.balance, account.mode, prevBalance, prevMode]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -206,11 +228,18 @@ export default function Header({
             <span className="text-[8px] uppercase tracking-widest text-slate-400 font-bold select-none leading-none mb-0.5">
               {account.mode === 'real' ? 'Real Wallet Balance' : 'Demo Virtual Funds'}
             </span>
-            <div className={`text-sm md:text-base font-mono font-black tracking-tight flex items-center justify-end space-x-0.5 ${
-              account.mode === 'real' 
-                ? isDark ? 'text-amber-400' : 'text-amber-600 font-extrabold'
-                : isDark ? 'text-yellow-400' : 'text-emerald-600 font-extrabold'
-            }`}>
+            <div 
+              key={`desktop-bal-${flashKey}`}
+              className={`text-sm md:text-base font-mono font-black tracking-tight flex items-center justify-end space-x-0.5 transition-all duration-300 ${
+                flashType === 'increase'
+                  ? 'animate-flash-text-green text-green-500'
+                  : flashType === 'decrease'
+                  ? 'animate-flash-text-red text-red-500'
+                  : account.mode === 'real' 
+                    ? isDark ? 'text-amber-400' : 'text-amber-600 font-extrabold'
+                    : isDark ? 'text-yellow-400' : 'text-emerald-600 font-extrabold'
+              }`}
+            >
               {account.mode === 'real' && !currentUser ? (
                 <span className="text-[11px] md:text-xs font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login to View</span>
               ) : (
@@ -350,15 +379,22 @@ export default function Header({
           <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest hidden min-[360px]:inline">
             {account.mode === 'real' ? 'Real:' : 'Demo:'}
           </span>
-          <div className={`px-2 py-0.5 rounded border ${
-            account.mode === 'real'
-              ? isDark 
-                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
-                : 'bg-amber-50 border-amber-200 text-amber-700'
-              : isDark
-                ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-          }`}>
+          <div 
+            key={`mobile-bal-${flashKey}`}
+            className={`px-2 py-0.5 rounded border transition-all duration-300 ${
+              flashType === 'increase'
+                ? 'animate-flash-green border-green-500 text-green-500 bg-green-500/20'
+                : flashType === 'decrease'
+                ? 'animate-flash-red border-red-500 text-red-500 bg-red-500/20'
+                : account.mode === 'real'
+                  ? isDark 
+                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                  : isDark
+                    ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            }`}
+          >
             {account.mode === 'real' && !currentUser ? (
               <span className="text-[10px] font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login</span>
             ) : (

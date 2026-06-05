@@ -1,0 +1,13 @@
+{
+	"appId": "com.maritech.trading",
+	"appName": "MariTech",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"url": "https://ais-pre-wckffqlqyxp2fbdy72pdco-883535415774.europe-west2.run.app",
+		"allowNavigation": [
+			"ais-pre-wckffqlqyxp2fbdy72pdco-883535415774.europe-west2.run.app",
+			"ais-dev-wckffqlqyxp2fbdy72pdco-883535415774.europe-west2.run.app"
+		]
+	}
+}

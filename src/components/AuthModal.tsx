@@ -39,6 +39,54 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetToken, setResetToken] = useState('');
 
+  // Register Google Auth Callback listener
+  useEffect(() => {
+    const handleGoogleMessage = (event: MessageEvent) => {
+      // Validate incoming message event structure and matching type
+      if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+        const { user, token } = event.data;
+        if (user && token) {
+          localStorage.setItem('lwex_current_user', JSON.stringify(user));
+          localStorage.setItem('lwex_token', token);
+          onSuccess(user);
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('message', handleGoogleMessage);
+    return () => window.removeEventListener('message', handleGoogleMessage);
+  }, [onSuccess, onClose]);
+
+  const handleGoogleSignIn = async () => {
+    setFormError('');
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/google/url');
+      if (!res.ok) throw new Error('Failed to fetch authentication URL.');
+      const data = await res.json();
+      if (!data.success || !data.url) throw new Error('Could not initialize Google authentication.');
+      
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.innerWidth - width) / 2;
+      const top = window.screenY + (window.innerHeight - height) / 2;
+      
+      const popup = window.open(
+        data.url,
+        'google_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,status=yes`
+      );
+      
+      if (!popup) {
+        setFormError('Popup blocked! Please allow popups for this site to sign in with Google.');
+      }
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to start Google sign in.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -434,6 +482,39 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
                   </>
                 )}
               </button>
+
+              {/* Divider */}
+              {(view === 'login' || view === 'register') && (
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-zinc-200 dark:border-zinc-800 animate-pulse"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider">
+                    <span className={`px-2.5 ${isDark ? 'bg-zinc-900 text-zinc-500' : 'bg-white text-zinc-400'}`}>Or continue with</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Google CTA */}
+              {(view === 'login' || view === 'register') && (
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className={`w-full py-2.5 px-4 rounded-lg font-bold flex items-center justify-center space-x-2 transition-all border shadow ${
+                    isDark 
+                      ? 'bg-zinc-950 border-zinc-800 text-white hover:bg-zinc-900/40 hover:border-zinc-750' 
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.48 14.99 1 12 1 7.35 1 3.37 3.67 1.39 7.56l3.85 2.99C6.18 7.37 8.87 5.04 12 5.04z" />
+                    <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.43c-.28 1.44-1.1 2.66-2.33 3.48v2.9l3.85 2.98c2.25-2.07 3.54-5.11 3.54-8.53z" />
+                    <path fill="#FBBC05" d="M5.24 10.55c-.24-.71-.38-1.47-.38-2.25s.14-1.54.38-2.25L1.39 4.06C.5 5.84 0 7.82 0 9.9c0 2.08.5 4.06 1.39 5.84l3.85-2.99z" />
+                    <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.85-2.9c-1.1.74-2.5 1.18-4.11 1.18-3.13 0-5.82-2.33-6.76-5.51L1.39 15.85C3.37 19.73 7.35 23 12 23z" />
+                  </svg>
+                  <span>Google Account SSO</span>
+                </button>
+              )}
 
               {/* Footer Links */}
               <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-center text-sm">

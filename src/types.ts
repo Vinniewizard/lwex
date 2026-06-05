@@ -44,6 +44,7 @@ export interface Contract {
   ticksHistory: { time: number; price: number }[];
   exitPrice?: number;
   exitTime?: number;
+  stopLoss?: number; // Stop Loss percentage limit (e.g. 10 for 10% movement / loss)
 }
 
 export interface TradeHistoryItem {

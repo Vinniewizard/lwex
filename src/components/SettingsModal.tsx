@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, User, Settings as SettingsIcon, Shield, CreditCard, LogOut, Clock, Globe, Phone as PhoneIcon, Edit2, Check, Mail } from 'lucide-react';
+import { X, User, Settings as SettingsIcon, Shield, CreditCard, LogOut, Clock, Globe, Phone as PhoneIcon, Edit2, Check, Mail, Lock, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Account } from '../types';
 
 interface SettingsModalProps {
@@ -10,15 +10,23 @@ interface SettingsModalProps {
   currentUser?: any;
   onUpdateUser?: (user: any) => void;
   onLogout?: () => void;
+  tradeHistory?: any[];
 }
 
-export default function SettingsModal({ isOpen, onClose, account, theme, currentUser, onUpdateUser, onLogout }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, account, theme, currentUser, onUpdateUser, onLogout, tradeHistory = [] }: SettingsModalProps) {
   const [isEditingPhone, setIsEditingPhone] = React.useState(false);
   const [phoneInput, setPhoneInput] = React.useState('');
   const [phoneError, setPhoneError] = React.useState('');
   const [isEditingEmail, setIsEditingEmail] = React.useState(false);
   const [emailInput, setEmailInput] = React.useState('');
   const [emailError, setEmailError] = React.useState('');
+
+  const [docType, setDocType] = React.useState('National ID');
+  const [docNum, setDocNum] = React.useState('');
+  const [verifyingMsg, setVerifyingMsg] = React.useState('');
+  const [verifyingError, setVerifyingError] = React.useState('');
+  const [docFile, setDocFile] = React.useState<File | null>(null);
+  const [submittingVerification, setSubmittingVerification] = React.useState(false);
 
   React.useEffect(() => {
     if (currentUser) {
@@ -70,6 +78,49 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
       });
       localStorage.setItem('lwex_users', JSON.stringify(updatedUsers));
       onUpdateUser({ ...currentUser, email: emailInput });
+    }
+  };
+
+  const handleSubmitVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!docNum.trim()) {
+      setVerifyingError('Document number or ID number is required.');
+      return;
+    }
+    setVerifyingError('');
+    setVerifyingMsg('');
+    setSubmittingVerification(true);
+
+    try {
+      const response = await fetch('/api/users/submit-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.id}`
+        },
+        body: JSON.stringify({
+          documentType: docType,
+          documentNumber: docNum
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Verification submission failed.');
+      }
+
+      setVerifyingMsg(data.message || 'Documents submitted successfully!');
+      
+      if (currentUser && onUpdateUser) {
+        onUpdateUser({
+          ...currentUser,
+          verificationStatus: 'pending'
+        });
+      }
+    } catch (err: any) {
+      setVerifyingError(err.message || 'Network error submitting documents.');
+    } finally {
+      setSubmittingVerification(false);
     }
   };
 
@@ -219,6 +270,179 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
               </div>
 
 
+            </div>
+          )}
+
+          {/* Document Verification & Withdraw Unlock Progress */}
+          {currentUser && (
+            <div className={`p-5 rounded-xl border space-y-4 ${
+              isDark ? 'bg-zinc-900/30 border-zinc-800' : 'bg-gray-50 border-gray-150'
+            }`}>
+              <div className="flex items-center justify-between border-b pb-2.5 border-slate-900/10 dark:border-zinc-800">
+                <div className="flex items-center space-x-2 text-sm font-bold animate-pulse-slow">
+                  <FileText className="h-4 w-4 text-amber-500" />
+                  <span>Document Verification & Registration Bonus</span>
+                </div>
+                <div>
+                  {currentUser.verificationStatus === 'verified' && (
+                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Approved
+                    </span>
+                  )}
+                  {currentUser.verificationStatus === 'pending' && (
+                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                      Pending Review
+                    </span>
+                  )}
+                  {currentUser.verificationStatus === 'rejected' && (
+                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      Rejected
+                    </span>
+                  )}
+                  {(currentUser.verificationStatus === 'unverified' || !currentUser.verificationStatus) && (
+                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
+                      Unverified
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Indicator if Verified */}
+              {currentUser.verificationStatus === 'verified' ? (
+                <div className="space-y-3.5">
+                  <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-1.5">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      Congratulations! Your documents have been successfully verified.
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      A free <strong>$20.00 Registration Bonus</strong> has been credited to your real account! Plus, you qualify for a <strong>50% First Deposit Match Bonus</strong>!
+                    </p>
+                  </div>
+
+                  {/* Progressive Withdrawal Trade Count Monitor */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-gray-400 font-bold uppercase tracking-wider text-[9px]">
+                        Bonus Withdrawal Unlock Progress
+                      </span>
+                      <span className="font-mono text-amber-500 font-extrabold text-xs">
+                        {Math.min(tradeHistory.filter((t: any) => t.status === 'won').length, 10)} / 10 Trades
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden border border-zinc-700/50">
+                      <div 
+                        className="bg-gradient-to-r from-amber-500 to-yellow-400 h-full transition-all duration-500"
+                        style={{ width: `${Math.min((tradeHistory.filter((t: any) => t.status === 'won').length / 10) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex items-start gap-1.5 p-2.5 rounded bg-amber-500/5 border border-amber-500/10">
+                      <Lock className="h-3 w-3 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-[9px] text-gray-500 leading-normal">
+                        {tradeHistory.filter((t: any) => t.status === 'won').length >= 10 ? (
+                          <span className="text-emerald-400 font-bold">🎉 Unlock condition has been met! Your balance and bonuses are fully withdrawable.</span>
+                        ) : (
+                          <span>To unlock withdrawability for your registration bonus and first deposit match, you must complete <strong>10 successful trades (natural winnings without early cashout)</strong> in Real Mode. ({10 - Math.min(tradeHistory.filter((t: any) => t.status === 'won').length, 10)} wins left)</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : currentUser.verificationStatus === 'pending' ? (
+                <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/15 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-500 font-bold text-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                    <span>Identity Verification Pending Review</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed font-sans">
+                    The security department is actively auditing your passport or national identification details. This automated audit usually takes 10-15 minutes. Once approved, your free registration bonus will be credited!
+                  </p>
+                </div>
+              ) : (
+                /* Submission Form */
+                <form onSubmit={handleSubmitVerification} className="space-y-3.5">
+                  <p className="text-[11px] text-gray-400 leading-normal">
+                    Submit registration documents to receive a <strong>$20 Free Bonus</strong> credited instantly upon approval + <strong>50% First Deposit Match Bonus</strong>!
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Document Type</label>
+                      <select
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value)}
+                        className={`w-full text-xs rounded px-2.5 py-1.5 border focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                          isDark ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-gray-250 text-black'
+                        }`}
+                      >
+                        <option value="National ID">National ID / I-Card</option>
+                        <option value="International Passport">International Passport</option>
+                        <option value="Drivers License">Driver's License</option>
+                        <option value="Proof of Address">Proof of Address / Utility</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-gray-400">ID / Serial Number</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. A3849102X"
+                        value={docNum}
+                        onChange={(e) => setDocNum(e.target.value)}
+                        className={`w-full text-xs rounded px-2.5 py-1.5 border focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                          isDark ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-gray-250 text-black'
+                        }`}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Drag and Drop Box wrapper */}
+                  <div className={`border border-dashed p-4 rounded-xl text-center space-y-1.5 cursor-pointer relative ${
+                    isDark ? 'border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/20' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+                  }`}>
+                    <input 
+                      type="file" 
+                      accept="image/*,.pdf" 
+                      onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                      className="absolute inset-0 opacity-0 cursor-pointer text-[0px]" 
+                    />
+                    <FileText className="h-5 w-5 text-gray-400 mx-auto" strokeWidth={1.5} />
+                    <p className="text-[10px] font-bold text-slate-300">
+                      {docFile ? `Selected: ${docFile.name}` : "Upload clean image of ID (Front & Back)"}
+                    </p>
+                    <p className="text-[8px] text-gray-500">Supports PDF, PNG & JPEG formats up to 10MB.</p>
+                  </div>
+
+                  {/* Success / Error Messages */}
+                  {verifyingMsg && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-500 font-bold bg-emerald-500/5 p-2 rounded border border-emerald-500/10">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>{verifyingMsg}</span>
+                    </div>
+                  )}
+                  {verifyingError && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-rose-500 font-bold bg-rose-500/5 p-2 rounded border border-rose-500/10">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      <span>{verifyingError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submittingVerification}
+                    className="w-full text-xs text-center font-bold bg-amber-500 hover:bg-amber-650 disabled:opacity-50 text-zinc-950 py-2 rounded-lg cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                  >
+                    {submittingVerification ? "Uploading & Auditing..." : "Submit Registration Docs"}
+                  </button>
+                </form>
+              )}
             </div>
           )}
 

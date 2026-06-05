@@ -64,6 +64,8 @@ function getSqliteInstance() {
     try { rawDb.exec("ALTER TABLE users ADD COLUMN max_win_limit REAL DEFAULT 0.00"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN max_loss_limit REAL DEFAULT 0.00"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN verified_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE app_settings ADD COLUMN game_settings TEXT DEFAULT '{}'"); } catch(e) {}
@@ -178,6 +180,17 @@ function getSqliteInstance() {
         contacts_scanned INTEGER DEFAULT 0,
         recruits_found INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS platform_visits (
+        id TEXT PRIMARY KEY,
+        ip TEXT,
+        user_agent TEXT,
+        referrer TEXT,
+        host TEXT,
+        user_id TEXT,
+        path TEXT,
         created_at TEXT NOT NULL
       );
 
@@ -316,6 +329,8 @@ function getD1Database() {
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_win_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS max_loss_limit REAL DEFAULT 0.00;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT '';
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_bonus_credited INTEGER DEFAULT 0;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_bonus_credited INTEGER DEFAULT 0;
           ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS game_settings TEXT DEFAULT '{}';
 
           CREATE TABLE IF NOT EXISTS user_sessions (
@@ -430,6 +445,17 @@ function getD1Database() {
             contacts_scanned INTEGER DEFAULT 0,
             recruits_found INTEGER DEFAULT 0,
             is_active INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS platform_visits (
+            id TEXT PRIMARY KEY,
+            ip TEXT,
+            user_agent TEXT,
+            referrer TEXT,
+            host TEXT,
+            user_id TEXT,
+            path TEXT,
             created_at TEXT NOT NULL
           );
 
@@ -995,6 +1021,21 @@ Active technical indicator values: ${indicatorsString}.`}`;
     }
   });
 
+  async function applyFirstDepositBonusIfEligible(db: any, userId: string, depositAmount: number, now: string) {
+    try {
+      const user = await db.prepare("SELECT first_deposit_bonus_credited FROM users WHERE id = ?").bind(userId).first();
+      if (user && user.first_deposit_bonus_credited !== 1) {
+        const bonusAmount = depositAmount * 0.50;
+        await db.prepare("UPDATE users SET real_balance = real_balance + ?, first_deposit_bonus_credited = 1, updated_at = ? WHERE id = ?")
+          .bind(bonusAmount, now, userId)
+          .run();
+        console.log(`[BONUS SYSTEM] Successfully applied 50% First Deposit Match Bonus of $${bonusAmount} for User ${userId}`);
+      }
+    } catch (err: any) {
+      console.error("[BONUS SYSTEM ERROR] applyFirstDepositBonusIfEligible failed:", err.message);
+    }
+  }
+
   // API Route: Verify NOWPayments Deposit (Status Check)
   app.get('/api/cashier/verify-deposit', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -1058,6 +1099,9 @@ Active technical indicator values: ${indicatorsString}.`}`;
         // Update user real_balance in SQL database
         await db.prepare('UPDATE users SET real_balance = real_balance + ?, updated_at = ? WHERE id = ?').bind(actualAmount, now, user.id).run();
 
+        // Apply first deposit match bonus if qualified
+        await applyFirstDepositBonusIfEligible(db, user.id, actualAmount, now);
+
         return res.json({ 
           success: true, 
           message: 'Payment confirmed and credited.',
@@ -1103,9 +1147,30 @@ Active technical indicator values: ${indicatorsString}.`}`;
       }
 
       const db = getD1Database();
-      const user = await db.prepare('SELECT id, real_balance FROM users WHERE id = ? OR email = ?').bind(userId, userId).first();
+      const user = await db.prepare('SELECT id, real_balance, verified_bonus_credited, first_deposit_bonus_credited FROM users WHERE id = ? OR email = ?').bind(userId, userId).first();
       if (!user) {
         return res.status(404).json({ success: false, message: 'User account not found.' });
+      }
+
+      // Safe bonus withdrawal condition checkpoint
+      if (user.verified_bonus_credited === 1 || user.first_deposit_bonus_credited === 1) {
+        const userState = await db.prepare("SELECT trade_history FROM user_states WHERE user_id = ? AND mode = 'real'").bind(user.id).first();
+        let wonTradesCount = 0;
+        if (userState && userState.trade_history) {
+          try {
+            const parsedHistory = JSON.parse(userState.trade_history);
+            wonTradesCount = parsedHistory.filter((t: any) => t.status === 'won').length;
+          } catch (e) {
+            console.warn("[WITHDRAWAL CHECK] Failed to parse trade history string:", e);
+          }
+        }
+
+        if (wonTradesCount < 10) {
+          return res.status(400).json({
+            success: false,
+            message: `Your account includes active promotional bonuses. To authorize withdrawals of your main balance and match credits, you need 10 successful trades (wins with no early cashouts) in Real Mode. Current status: ${wonTradesCount}/10 wins completed.`
+          });
+        }
       }
 
       if (user.real_balance < amount) {
@@ -1233,6 +1298,10 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
           // Update user real_balance in SQL database
           await db.prepare('UPDATE users SET real_balance = real_balance + ?, updated_at = ? WHERE id = ?').bind(amount, now, user.id).run();
+
+          // Apply first deposit match bonus if qualified
+          await applyFirstDepositBonusIfEligible(db, user.id, amount, now);
+
           console.log(`[WEBHOOK] Successfully credited User ${user.id} with $${amount}`);
         } else {
           console.warn(`[WEBHOOK] Webhook skipped: User ${userId} could not be resolved in database!`);
@@ -1283,7 +1352,402 @@ Active technical indicator values: ${indicatorsString}.`}`;
   });
 
   // ==================== AUTH ENDPOINTS ====================
+
+  // ==================== TRAFFIC AND VISITS TRACKER ====================
+  app.post('/api/visits/log', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const { referrer, host, path: currentPath, userAgent, userId } = req.body;
+      let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+      if (Array.isArray(ip)) ip = ip[0];
+      
+      const db = getD1Database();
+      const id = 'visit_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      const createdAt = new Date().toISOString();
+      
+      await db.prepare(`
+        INSERT INTO platform_visits (id, ip, user_agent, referrer, host, user_id, path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(id, ip, userAgent || '', referrer || '', host || '', userId || null, currentPath || '/', createdAt).run();
+      
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('Visits log error:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get('/api/admin/visits', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const adminKey = req.headers['x-admin-key'];
+      if (adminKey !== process.env.ADMIN_KEY && adminKey !== 'admin-secret-key') {
+        return res.status(403).json({ success: false, message: 'Unauthorized' });
+      }
+      const db = getD1Database();
+      const allVisits = (await db.prepare('SELECT * FROM platform_visits ORDER BY created_at DESC').all())?.results || [];
+      
+      const totalVisits = allVisits.length;
+      const uniqueIPs = new Set(allVisits.map((v: any) => v.ip)).size;
+      
+      const lwexVisitsCount = allVisits.filter((v: any) => 
+        (v.host && v.host.includes('lwex.onrender.com')) || 
+        (v.referrer && v.referrer.includes('lwex.onrender.com'))
+      ).length;
+
+      return res.json({
+        success: true,
+        visitsCount: totalVisits,
+        uniqueVisitors: uniqueIPs,
+        lwexCount: lwexVisitsCount,
+        recentVisits: allVisits.slice(0, 100)
+      });
+    } catch (err: any) {
+      console.error('Admin visits fetch error:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Failed to fetch visits' });
+    }
+  });
+
+  // ==================== USER GOOGLE AUTH ENDPOINTS ====================
   
+  // Initiator URL getter
+  app.get('/api/auth/google/url', (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+    
+    if (clientId) {
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: 'openid email profile',
+        prompt: 'select_account'
+      });
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+      return res.json({ success: true, url: authUrl, simulated: false });
+    } else {
+      const simulatedUrl = `/api/auth/google/simulated-select`;
+      return res.json({ success: true, url: simulatedUrl, simulated: true });
+    }
+  });
+
+  // Simulated chooser page UI
+  app.get('/api/auth/google/simulated-select', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    return res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sign in - Google Accounts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f0f4f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 450px;
+      padding: 40px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .logo {
+      height: 32px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 400;
+      color: #202124;
+      margin: 0 0 8px 0;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: #5f6368;
+      margin-bottom: 32px;
+    }
+    .account-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid #dadce0;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.2s;
+    }
+    .account-item:hover {
+      background: #f8f9fa;
+    }
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #eaf2ff;
+      color: #0b57d0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      margin-right: 12px;
+    }
+    .account-details {
+      flex: 1;
+    }
+    .account-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #3c4043;
+    }
+    .account-email {
+      font-size: 12px;
+      color: #5f6368;
+    }
+    .custom-input-section {
+      margin-top: 24px;
+      text-align: left;
+      border-top: 1px dashed #dadce0;
+      padding-top: 20px;
+    }
+    .custom-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #3c4043;
+      margin-bottom: 12px;
+      display: block;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #1a73e8;
+    }
+    button.btn-submit {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      font-size: 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      width: 100%;
+    }
+    button.btn-submit:hover {
+      background: #1557b0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg class="logo" viewBox="0 0 24 24" width="74" height="24" style="height:32px;">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.1-.13-.19-.27-.27-.41s-.14-.29-.19-.44c-.03-.09-.06-.18-.08-.28z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+    </svg>
+    <h1>Choose an account</h1>
+    <div class="subtitle">to continue to LWEX Trading Node</div>
+    
+    <div class="account-item" onclick="select('ryanelvo1@gmail.com', 'Ryan Elvo')">
+      <div class="avatar" style="background:#e8f0fe; color:#1a73e8; font-weight:bold; font-size:16px;">R</div>
+      <div class="account-details">
+        <div class="account-name">Ryan Elvo</div>
+        <div class="account-email">ryanelvo1@gmail.com</div>
+      </div>
+    </div>
+    
+    <div class="account-item" onclick="select('trader.demo@gmail.com', 'Demo Trader')">
+      <div class="avatar" style="background:#e8f0fe; color:#1a73e8; font-weight:bold; font-size:16px;">D</div>
+      <div class="account-details">
+        <div class="account-name">Demo Trader</div>
+        <div class="account-email">trader.demo@gmail.com</div>
+      </div>
+    </div>
+
+    <div class="account-item" onclick="select('wizard@lwex.com', 'Wizard Master')">
+      <div class="avatar" style="background:#e8f0fe; color:#1a73e8; font-weight:bold; font-size:16px;">W</div>
+      <div class="account-details">
+        <div class="account-name">Wizard Master</div>
+        <div class="account-email">wizard@lwex.com</div>
+      </div>
+    </div>
+
+    <div class="custom-input-section">
+      <div class="custom-label">Or use custom simulated account:</div>
+      <form action="/api/auth/google/simulated-callback" method="GET">
+        <input type="text" name="name" placeholder="Full Name (e.g. John Doe)" required style="width: 100%; padding: 10px 14px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; box-sizing: border-box; margin-bottom: 12px;" />
+        <input type="email" name="email" placeholder="Email Address (e.g. john@doe.com)" required style="width: 100%; padding: 10px 14px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; box-sizing: border-box; margin-bottom: 12px;" />
+        <button type="submit" class="btn-submit">Continue to LWEX</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function select(email, name) {
+      window.location.href = '/api/auth/google/simulated-callback?email=' + encodeURIComponent(email) + '&name=' + encodeURIComponent(name);
+    }
+  </script>
+</body>
+</html>
+    `);
+  });
+
+  // Common Google registration/session generator helper function
+  async function handleUserGoogleAuth(email: string, fullName: string, res: any) {
+    try {
+      const db = getD1Database();
+      let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+      const now = new Date().toISOString();
+      let userId: string;
+
+      if (!user) {
+        userId = `user-${crypto.randomBytes(8).toString('hex')}`;
+        const passwordHash = crypto.createHash('sha256').update('google-auth-random-pass-' + crypto.randomBytes(16).toString('hex')).digest('hex');
+        
+        await db.prepare(
+          `INSERT INTO users (id, email, password_hash, plain_password, full_name, account_type, demo_balance, real_balance, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(userId, email, passwordHash, '', fullName || 'Google User', 'demo', 10000.0, 0.0, now, now).run();
+
+        await db.prepare(
+          `INSERT INTO user_profiles (user_id, phone, country, verification_status, two_factor_enabled, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(userId, null, 'Kenya', 'unverified', 0, now, now).run();
+      } else {
+        userId = user.id;
+      }
+
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      const sessionId = `sess-${crypto.randomBytes(8).toString('hex')}`;
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      await db.prepare(
+        `INSERT INTO user_sessions (session_id, user_id, token, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?)`
+      ).bind(sessionId, userId, sessionToken, now, expiresAt).run();
+
+      await db.prepare('UPDATE users SET last_login = ?, updated_at = ? WHERE id = ?').bind(now, now, userId).run();
+
+      const finalUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Sign In Successful</title>
+          <style>
+            body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #fafafa; color: #333; }
+            .spinner { border: 4px solid rgba(0,0,0,0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #1a73e8; animation: spin 1s linear infinite; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            h2 { margin-top: 20px; font-weight: 500; font-size: 18px; }
+          </style>
+        </head>
+        <body>
+          <div class="spinner"></div>
+          <h2>Syncing with LWEX Terminal... Please wait.</h2>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'GOOGLE_AUTH_SUCCESS',
+                user: {
+                  id: "${finalUser.id}",
+                  email: "${finalUser.email}",
+                  fullName: "${finalUser.full_name || 'Google User'}",
+                  phone: "",
+                  country: "Kenya",
+                  balance: ${finalUser.account_type === 'demo' ? finalUser.demo_balance : finalUser.real_balance},
+                  accountType: "${finalUser.account_type}",
+                  forceOutcome: "${finalUser.force_outcome || ''}",
+                  profitTarget: ${finalUser.profit_target || 0},
+                  maxWinLimit: ${finalUser.max_win_limit || 0},
+                  maxLossLimit: ${finalUser.max_loss_limit || 0}
+                },
+                token: "${sessionToken}"
+              }, '*');
+              setTimeout(() => {
+                window.close();
+              }, 800);
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (err: any) {
+      console.error('Google Auth callback sub-route fail:', err);
+      res.status(500).send('<h2>Google Authentication Failed</h3><p>' + err.message + '</p>');
+    }
+  }
+
+  // Simulated redirect endpoint
+  app.get('/api/auth/google/simulated-callback', async (req, res) => {
+    const { email, name } = req.query;
+    if (!email) return res.status(400).send('Email parameter required for simulated authentication');
+    await handleUserGoogleAuth(email as string, (name as string) || 'Google User', res);
+  });
+
+  // Real Google Oauth Callback URL
+  app.get('/api/auth/google/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).send('Authorization code missing');
+    }
+    try {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['x-forwarded-host'] || req.get('host');
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code: code as string,
+          client_id: process.env.GOOGLE_CLIENT_ID!,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code'
+        })
+      });
+      const tokens: any = await tokenRes.json();
+      if (!tokens.access_token) {
+        throw new Error(JSON.stringify(tokens));
+      }
+
+      const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      const profile: any = await userinfoRes.json();
+      if (!profile.email) {
+        throw new Error('Could not fetch email from provider');
+      }
+
+      await handleUserGoogleAuth(profile.email, profile.name || profile.given_name || 'Google User', res);
+    } catch (err: any) {
+      console.error('Real Google callback error:', err);
+      res.status(500).send('<h2>Real Google login failed</h2><p>' + err.message + '</p>');
+    }
+  });
+
   // Register endpoint
   app.post('/api/auth/register', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -1416,7 +1880,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
         return res.status(401).json({ success: false, message: 'Invalid email or password.' });
       }
 
-      const profile = await db.prepare('SELECT phone, country FROM user_profiles WHERE user_id = ?').bind(user.id).first();
+      const profile = await db.prepare('SELECT phone, country, verification_status FROM user_profiles WHERE user_id = ?').bind(user.id).first();
 
       const sessionToken = crypto.randomBytes(32).toString('hex');
       const sessionId = `sess-${crypto.randomBytes(8).toString('hex')}`;
@@ -1440,6 +1904,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
           fullName: user.full_name,
           phone: profile?.phone || '',
           country: profile?.country || 'Kenya',
+          verificationStatus: profile?.verification_status || 'unverified',
           balance: user.account_type === 'demo' ? user.demo_balance : user.real_balance,
           accountType: user.account_type,
           forceOutcome: user.force_outcome,
@@ -1466,7 +1931,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       
       const userId = authHeader.split(' ')[1];
       const db = getD1Database();
-      const user = await db.prepare('SELECT u.id, u.email, u.full_name as fullName, p.phone, u.account_type, u.demo_balance, u.real_balance FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?').bind(userId).first();
+      const user = await db.prepare('SELECT u.id, u.email, u.full_name as fullName, p.phone, u.account_type, u.demo_balance, u.real_balance, p.verification_status as verificationStatus FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?').bind(userId).first();
       
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
@@ -1476,6 +1941,44 @@ Active technical indicator values: ${indicatorsString}.`}`;
     } catch (err: any) {
       console.error('[API USERS ME ERROR]', err.message);
       return res.status(500).json({ success: false, message: 'Server error' });
+    }
+  });
+
+  app.post('/api/users/submit-verification', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+      const userId = authHeader.split(' ')[1];
+      const { documentType, documentNumber } = req.body;
+
+      const db = getD1Database();
+
+      // Ensure user exists
+      const user = await db.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      // Update or insert profile with verification_status = 'pending'
+      const profile = await db.prepare('SELECT user_id FROM user_profiles WHERE user_id = ?').bind(userId).first();
+      const now = new Date().toISOString();
+      if (profile) {
+        await db.prepare('UPDATE user_profiles SET verification_status = ?, updated_at = ? WHERE user_id = ?')
+          .bind('pending', now, userId)
+          .run();
+      } else {
+        await db.prepare('INSERT INTO user_profiles (user_id, verification_status, created_at, updated_at) VALUES (?, ?, ?, ?)')
+          .bind(userId, 'pending', now, now)
+          .run();
+      }
+
+      return res.json({ success: true, message: 'Documents submitted successfully! The security audit has begun.' });
+    } catch (err: any) {
+      console.error('[SUBMIT VERIFICATION ERROR]', err.message);
+      return res.status(500).json({ success: false, message: 'Server error processing documents.' });
     }
   });
 
@@ -3010,7 +3513,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       await db.prepare(query).bind(...params).run();
 
       if (verificationStatus) {
-        const profile = await db.prepare("SELECT user_id FROM user_profiles WHERE user_id = ?").bind(userId).first();
+        const profile = await db.prepare("SELECT user_id, verification_status FROM user_profiles WHERE user_id = ?").bind(userId).first();
         const now = new Date().toISOString();
         if (profile) {
           await db.prepare("UPDATE user_profiles SET verification_status = ?, updated_at = ? WHERE user_id = ?")
@@ -3020,6 +3523,17 @@ Active technical indicator values: ${indicatorsString}.`}`;
           await db.prepare("INSERT INTO user_profiles (user_id, verification_status, created_at, updated_at) VALUES (?, ?, ?, ?)")
             .bind(userId, verificationStatus, now, now)
             .run();
+        }
+
+        // Apply $20.00 free bonus upon successful document verification
+        if (verificationStatus === 'verified') {
+          const userObj = await db.prepare("SELECT verified_bonus_credited, real_balance FROM users WHERE id = ?").bind(userId).first();
+          if (userObj && userObj.verified_bonus_credited !== 1) {
+            await db.prepare("UPDATE users SET real_balance = real_balance + 20.00, verified_bonus_credited = 1, updated_at = ? WHERE id = ?")
+              .bind(now, userId)
+              .run();
+            console.log(`[BONUS SYSTEM] Approved verification status: Credited $20 Registration Bonus to user ${userId}`);
+          }
         }
       }
 
@@ -3227,6 +3741,9 @@ Active technical indicator values: ${indicatorsString}.`}`;
           `INSERT INTO credited_deposits (tx_hash, amount, coin, network, user_id, credited_at)
            VALUES (?, ?, ?, ?, ?, ?)`
         ).bind(txHash, deposit.amount, 'USD', 'MPESA', user.id, now).run();
+
+        // Apply first deposit match bonus if qualified
+        await applyFirstDepositBonusIfEligible(db, user.id, deposit.amount, now);
       } else {
         // Mark as declined
         await db.prepare("UPDATE pending_deposits SET status = 'declined' WHERE id = ?").bind(depositId).run();

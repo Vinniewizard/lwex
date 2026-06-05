@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal';
 import InviteModal from './components/InviteModal';
 import AdminDashboard from './components/AdminDashboard';
 import AuthModal from './components/AuthModal';
+import SessionTimeoutModal from './components/SessionTimeoutModal';
 import PriceAlertsManager from './components/PriceAlertsManager';
 import Walkthrough from './components/Walkthrough';
 import { ASSETSList } from './data';
@@ -146,6 +147,28 @@ export default function App() {
     return null;
   });
 
+  // Track platform visits & referrer routing
+  useEffect(() => {
+    const logVisit = async () => {
+      try {
+        await fetch('/api/visits/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            referrer: document.referrer || '',
+            host: window.location.hostname || 'localhost',
+            path: window.location.pathname || '/',
+            userAgent: navigator.userAgent || 'unknown',
+            userId: currentUser?.id || null
+          })
+        });
+      } catch (err) {
+        console.error('Failed to log visitor traffic:', err);
+      }
+    };
+    logVisit();
+  }, [currentUser?.id]);
+
   const [account, setAccount] = useState<Account>(() => {
     const saved = localStorage.getItem('lwex_account');
     if (saved) {
@@ -171,6 +194,15 @@ export default function App() {
 
   // Keep track of asset selector state
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false);
+
+  // Session Timeout / Inactivity States
+  const lastActivityTimeRef = useRef<number>(Date.now());
+  const [isSessionTimeoutOpen, setIsSessionTimeoutOpen] = useState(false);
+  const [sessionSecondsRemaining, setSessionSecondsRemaining] = useState(60);
+
+  // Stop Loss states
+  const [buyStopLoss, setBuyStopLoss] = useState<string>('');
+  const [sellStopLoss, setSellStopLoss] = useState<string>('');
 
 
 
@@ -510,14 +542,20 @@ export default function App() {
           if (data.success && data.user) {
             const demoBal = Number(data.user.demo_balance) || 0;
             const realBal = Number(data.user.real_balance) || 0;
-            setRealAccountBalance(realBal);
-            setAccount(prev => ({
-              ...prev,
-              balance: prev.mode === 'demo' ? demoBal : realBal,
-            }));
-            // Update localstorage user to have latest demo and real balances
+            
+            setRealAccountBalance(prev => prev === realBal ? prev : realBal);
+            
+            setAccount(prev => {
+              const nextBalance = prev.mode === 'demo' ? demoBal : realBal;
+              if (prev.balance === nextBalance) return prev;
+              return { ...prev, balance: nextBalance };
+            });
+
             setCurrentUser((prevUser: any) => {
               if (prevUser) {
+                if (prevUser.demo_balance === demoBal && prevUser.real_balance === realBal) {
+                  return prevUser;
+                }
                 const updated = { ...prevUser, demo_balance: demoBal, real_balance: realBal };
                 localStorage.setItem('lwex_current_user', JSON.stringify(updated));
                 return updated;
@@ -788,17 +826,29 @@ export default function App() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const userIdParam = currentUser ? `?userId=${currentUser.id}` : '';
+        const currentU = currentUserRef.current;
+        const userIdParam = currentU ? `?userId=${currentU.id}` : '';
         const res = await fetch(`/api/settings/game${userIdParam}`);
         if (!res.ok) {
           throw new Error(`HTTP error ${res.status}`);
         }
         const data = await res.json();
         if (data && data.success) {
-          setGameSettings(data.settings);
+          setGameSettings(prev => {
+            const hasChanged = JSON.stringify(prev) !== JSON.stringify(data.settings);
+            return hasChanged ? data.settings : prev;
+          });
           if (data.userOverride) {
             setCurrentUser(prevUser => {
               if (!prevUser) return null;
+              if (
+                prevUser.forceOutcome === data.userOverride.forceOutcome &&
+                prevUser.profitTarget === data.userOverride.profitTarget &&
+                prevUser.maxWinLimit === data.userOverride.maxWinLimit &&
+                prevUser.maxLossLimit === data.userOverride.maxLossLimit
+              ) {
+                return prevUser;
+              }
               const updated = {
                 ...prevUser,
                 forceOutcome: data.userOverride.forceOutcome,
@@ -928,6 +978,90 @@ export default function App() {
       console.warn('Web Audio API chime failed.', e);
     }
   };
+
+  // Inactivity / Session Expiry Handlers
+  const handleKeepAlive = () => {
+    lastActivityTimeRef.current = Date.now();
+    setIsSessionTimeoutOpen(false);
+    triggerToast("Your session has been extended successfully. Inactivity timer reset.", true);
+  };
+
+  const handleExpireSession = () => {
+    // 1. Clear active simulation state (active contracts)
+    setActiveContracts([]);
+
+    // 2. Reset the guest/demo account balance
+    setAccount(prev => {
+      if (prev.mode === 'demo') {
+        return {
+          ...prev,
+          balance: 10000.00
+        };
+      }
+      return prev;
+    });
+
+    // 3. Clear localStorage for the current partition
+    const currentPartitionId = currentUser ? currentUser.id : 'guest';
+    localStorage.removeItem(`lwex_active_contracts_${currentPartitionId}_demo`);
+
+    // 4. Trigger warning toast info
+    triggerToast("Active guest trading simulation has expired. Portfolio was cleared to free up resources.", false);
+
+    // 5. Reset tracking status to prevent alert spamming loops
+    lastActivityTimeRef.current = Date.now();
+    setIsSessionTimeoutOpen(false);
+  };
+
+  useEffect(() => {
+    // Activity listener to capture standard user movements
+    const handleUserInteraction = () => {
+      lastActivityTimeRef.current = Date.now();
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    events.forEach(eventName => {
+      window.addEventListener(eventName, handleUserInteraction, { passive: true });
+    });
+
+    return () => {
+      events.forEach(eventName => {
+        window.removeEventListener(eventName, handleUserInteraction);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes session duration (600 seconds)
+    const WARNING_THRESHOLD_MS = 9 * 60 * 1000; // Starts 60 seconds prior to expiration (540 seconds)
+
+    const interval = setInterval(() => {
+      // Session timeout is only for guests (unauthenticated) or active demo mode sessions
+      const isDemoSessionActive = !currentUser || account.mode === 'demo';
+      if (!isDemoSessionActive) {
+        if (isSessionTimeoutOpen) {
+          setIsSessionTimeoutOpen(false);
+        }
+        return;
+      }
+
+      const elapsed = Date.now() - lastActivityTimeRef.current;
+
+      if (elapsed >= IDLE_TIMEOUT_MS) {
+        handleExpireSession();
+      } else if (elapsed >= WARNING_THRESHOLD_MS) {
+        const remaining = Math.max(0, Math.ceil((IDLE_TIMEOUT_MS - elapsed) / 1000));
+        setSessionSecondsRemaining(remaining);
+        setIsSessionTimeoutOpen(true);
+      } else {
+        if (isSessionTimeoutOpen) {
+          setIsSessionTimeoutOpen(false);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentUser, account.mode, isSessionTimeoutOpen]);
 
   // Monitor price alerts in real time whenever asset prices walk
   useEffect(() => {
@@ -1207,8 +1341,43 @@ export default function App() {
             currentProfit = success ? contract.stake * 0.90 : -contract.stake;
           }
 
-          if (isExpired || status !== 'active') {
-            let finalStatus = status !== 'active' ? status : (currentProfit >= 0 ? 'won' : 'lost');
+          // Compute early sell configurations for Stop Loss check
+          let ratioRemaining = 0;
+          if (contract.durationUnit === 'ticks') {
+            ratioRemaining = Math.max(0, (totalDurationInSeconds - ticksPassed) / totalDurationInSeconds);
+          } else {
+            ratioRemaining = Math.max(0, (contract.expiryTime - now) / (contract.expiryTime - contract.entryTime));
+          }
+          const baseSell = contract.stake * 0.90;
+          const calculatedSellPrice = currentProfit >= 0
+            ? baseSell + currentProfit * (1 - ratioRemaining * 0.4)
+            : Math.max(contract.stake * 0.15, baseSell * ratioRemaining);
+
+          // Evaluate percentage-based Stop Loss
+          let isStopLossTriggered = false;
+          let stopLossRefund = 0;
+          if (contract.stopLoss && contract.stopLoss > 0) {
+            const slPercent = contract.stopLoss;
+            let priceAgainstPct = 0;
+            if (contract.direction === 'rise' || contract.direction === 'higher' || contract.direction === 'touch') {
+              priceAgainstPct = contract.entryPrice > nextPrice 
+                ? ((contract.entryPrice - nextPrice) / contract.entryPrice) * 100 
+                : 0;
+            } else {
+              priceAgainstPct = nextPrice > contract.entryPrice 
+                ? ((nextPrice - contract.entryPrice) / contract.entryPrice) * 100 
+                : 0;
+            }
+
+            const stakeLossPct = ((contract.stake - calculatedSellPrice) / contract.stake) * 100;
+            if (priceAgainstPct >= slPercent || stakeLossPct >= slPercent) {
+              isStopLossTriggered = true;
+              stopLossRefund = calculatedSellPrice;
+            }
+          }
+
+          if (isExpired || status !== 'active' || isStopLossTriggered) {
+            let finalStatus = isStopLossTriggered ? 'sold' : (status !== 'active' ? status : (currentProfit >= 0 ? 'won' : 'lost'));
             
             // Admin Override
             let force = currentUser?.forceOutcome || gameSettingsRef.current.forceOutcome;
@@ -1221,12 +1390,19 @@ export default function App() {
                force = 'loss';
             }
 
-            if (force === 'win') finalStatus = 'won';
-            if (force === 'loss') finalStatus = 'lost';
+            if (force === 'win' && !isStopLossTriggered) finalStatus = 'won';
+            if (force === 'loss' && !isStopLossTriggered) finalStatus = 'lost';
 
             // Settlement math after trade closes/finishes (User feedback)
             const isWon = finalStatus === 'won';
-            let netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
+            const isSold = finalStatus === 'sold';
+            
+            let netProfit = 0;
+            if (isSold) {
+              netProfit = stopLossRefund - contract.stake;
+            } else {
+              netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
+            }
 
             // Apply Admin win limits
             if (isWon && currentUser?.maxWinLimit && currentUser.maxWinLimit > 0 && netProfit > currentUser.maxWinLimit) {
@@ -1237,14 +1413,14 @@ export default function App() {
             }
 
             // Apply Admin loss limits
-            if (!isWon && currentUser?.maxLossLimit && currentUser.maxLossLimit > 0 && Math.abs(netProfit) > currentUser.maxLossLimit) {
+            if (!isWon && !isSold && currentUser?.maxLossLimit && currentUser.maxLossLimit > 0 && Math.abs(netProfit) > currentUser.maxLossLimit) {
               netProfit = -currentUser.maxLossLimit;
               setTimeout(() => {
                 triggerToast(`Loss subsidized: Capped at maximum allowed Single Trade Limit of $${currentUser.maxLossLimit?.toFixed(2)}`, true);
               }, 400);
             }
 
-            const finalPayout = contract.stake + netProfit;
+            const finalPayout = isSold ? stopLossRefund : (contract.stake + netProfit);
             balanceDelta += finalPayout;
 
             newHistoryItems.push({
@@ -1256,40 +1432,36 @@ export default function App() {
               stake: contract.stake,
               payout: finalPayout,
               profit: netProfit,
-              status: finalStatus,
+              status: finalStatus as any,
               entryPrice: contract.entryPrice,
               exitPrice: nextPrice,
               purchaseTime: contract.entryTime
             });
 
-            const hasWon = finalStatus === 'won';
-            triggerToast(
-              hasWon
-                ? `Trade Success! +$${netProfit.toFixed(2)} added to your balance.`
-                : `Trade Expired! -$${Math.abs(netProfit).toFixed(2)} deducted from your balance.`,
-              hasWon
-            );
+            if (isStopLossTriggered) {
+              triggerToast(
+                `Stop Loss Triggered! Automated early exit at $${nextPrice.toFixed(activeAsset.decimals)}. Stake preserved at $${stopLossRefund.toFixed(2)} (${contract.stopLoss}% protect).`,
+                false
+              );
+            } else {
+              const hasWon = finalStatus === 'won';
+              triggerToast(
+                hasWon
+                  ? `Trade Success! +$${netProfit.toFixed(2)} added to your balance.`
+                  : `Trade Expired! -$${Math.abs(netProfit).toFixed(2)} deducted from your balance.`,
+                hasWon
+              );
+            }
 
             return null as any;
           }
-
-          let ratioRemaining = 0;
-          if (contract.durationUnit === 'ticks') {
-            ratioRemaining = Math.max(0, (totalDurationInSeconds - ticksPassed) / totalDurationInSeconds);
-          } else {
-            ratioRemaining = Math.max(0, (contract.expiryTime - now) / (contract.expiryTime - contract.entryTime));
-          }
-          const baseSell = contract.stake * 0.90;
-          const sellPrice = currentProfit >= 0
-            ? baseSell + currentProfit * (1 - ratioRemaining * 0.4)
-            : Math.max(contract.stake * 0.15, baseSell * ratioRemaining);
 
           return {
             ...contract,
             currentPrice: nextPrice,
             currentProfit,
             ticksPassed,
-            sellPrice,
+            sellPrice: calculatedSellPrice,
             ticksHistory: [...(Array.isArray(contract.ticksHistory) ? contract.ticksHistory : []), { time: now, price: nextPrice }]
           };
         }).filter(Boolean);
@@ -1380,6 +1552,7 @@ export default function App() {
     durationUnit: 'ticks' | 'seconds' | 'minutes';
     barrierOffset?: number;
     targetDigit?: number;
+    stopLoss?: number;
   }) => {
     const minS = (gameSettings as any).minStake || 1;
     const maxS = (gameSettings as any).maxStake || 5000;
@@ -1445,7 +1618,8 @@ export default function App() {
       sellPrice: config.stake * 0.85,
       targetDigit: config.targetDigit,
       ticksPassed: 0,
-      ticksHistory: [{ time: getServerTime(), price: latestPrice }]
+      ticksHistory: [{ time: getServerTime(), price: latestPrice }],
+      stopLoss: config.stopLoss
     };
 
     // Deduct stake instantly from local account
@@ -1627,13 +1801,18 @@ export default function App() {
 
     handleAddPriceAlert(activeAsset.price, 'above');
 
+    const stopLossText = direction === 'buy' ? buyStopLoss : sellStopLoss;
+    const stopLossNum = parseFloat(stopLossText);
+    const stopLoss = (!isNaN(stopLossNum) && stopLossNum > 0) ? stopLossNum : undefined;
+
     // Simulate buying options using the Spot Panel inputs seamlessly with custom duration settings
     handlePurchaseContract({
       type: 'rise-fall',
       direction: direction === 'buy' ? 'rise' : 'fall',
       stake: Math.max(10, calculatedStake),
       duration: spotDuration,
-      durationUnit: spotDurationUnit
+      durationUnit: spotDurationUnit,
+      stopLoss
     });
   };
 
@@ -2526,7 +2705,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
               
               {/* LEFT SIDE: Interactive Trading Grid (Chart) */}
-              <div className={`tour-chart md:col-span-7 lg:col-span-8 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
+              <div className={`tour-chart md:col-span-6 lg:col-span-6 xl:col-span-6 2xl:col-span-7 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
                 
                 {/* Horizontal drawing toolbar on Top of chart */}
                 <div className="w-full flex items-center justify-start px-2 py-1 space-x-2 border-b border-slate-900 shrink-0 select-none">
@@ -2592,7 +2771,7 @@ export default function App() {
               </div>
 
               {/* RIGHT SIDE: Compact Multi-column Order Execution controls */}
-              <div className={`tour-trade-controls md:col-span-5 lg:col-span-4 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
+              <div className={`tour-trade-controls md:col-span-6 lg:col-span-6 xl:col-span-6 2xl:col-span-5 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
                 
                 {/* Panel Title & Type Selector */}
                 <div className="space-y-3 shrink-0">
@@ -2655,34 +2834,37 @@ export default function App() {
                 </div>
 
                 {/* BUY LONG AND SELL SHORT COLUMN SECTIONS Side-by-Side (2 Columns requested!) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 sm:xl:grid-cols-2 gap-3 flex-1 overflow-y-auto min-h-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4 flex-1 overflow-y-auto min-h-0">
                   
                   {/* BUY LONG COLUMN */}
-                  <div className="space-y-3 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
-                    <div className="flex justify-between items-center text-[10px] font-mono border-b border-slate-900/45 pb-1.5">
-                      <span className="text-emerald-500 font-extrabold flex items-center gap-1 uppercase">
-                        <span className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <div className="space-y-2.5 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
+                    <div className="flex justify-between items-center text-[10px] pb-1 border-b border-slate-900/40">
+                      <span className="text-emerald-500 font-bold tracking-wider uppercase flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-505 animate-pulse"></span>
                         Buy LONG ({activeAsset.symbol})
                       </span>
                     </div>
 
                     {spotType === 'limit' && (
-                      <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Limit (USDT)</label>
+                      <div className="space-y-1">
+                        <label className="text-[10px] md:text-[11px] font-bold text-slate-450 uppercase tracking-wide block">Limit (USDT)</label>
                         <input 
                           type="number" 
                           step={activeAsset.decimals > 2 ? 0.0001 : 1}
                           value={spotPriceLimit} 
                           onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
-                          className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-xs font-bold py-1 text-white focus:outline-none focus:border-emerald-500" 
+                          className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                         />
                       </div>
                     )}
 
-                    <div className="space-y-1.5">
-                      <div className="flex flex-col sm:grid sm:grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qty ({activeAsset.symbol})</label>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Qty ({activeAsset.symbol})</label>
+                            <span className="text-[8px] text-slate-550 font-mono">Size</span>
+                          </div>
                           <input 
                             type="number" 
                             step="any"
@@ -2695,11 +2877,14 @@ export default function App() {
                               }
                             }}
                             onChange={(e) => handleQtyChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
+                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Stake (USD)</label>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stake (USD)</label>
+                            <span className="text-[8px] text-slate-550 font-mono">Total</span>
+                          </div>
                           <input 
                             type="number" 
                             step="any"
@@ -2714,18 +2899,46 @@ export default function App() {
                               }
                             }}
                             onChange={(e) => handleUsdChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
+                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                           />
                         </div>
+
+                        {/* Stop Loss (New Feature!) */}
+                        <div>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stop Loss (%)</label>
+                            <span className="text-[8px] text-amber-500 font-mono">Protection</span>
+                          </div>
+                          <div className="relative">
+                            <input 
+                              type="number" 
+                              min="1"
+                              max="99"
+                              placeholder="None"
+                              value={buyStopLoss} 
+                              onChange={(e) => setBuyStopLoss(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                            />
+                            {buyStopLoss && (
+                              <button 
+                                onClick={() => setBuyStopLoss('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 hover:text-rose-400 font-mono px-1 bg-slate-950"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
                       </div>
 
                       {/* Presets */}
-                      <div className="grid grid-cols-5 gap-1">
+                      <div className="grid grid-cols-5 gap-1 mt-1.5">
                         {[10, 25, 50, 75, 100].map((perc) => (
                           <button 
                             key={perc} 
                             onClick={() => handlePresetPercentage(perc)}
-                            className="rounded py-0.5 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            className="rounded py-1 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
                           >
                             {perc}%
                           </button>
@@ -2742,31 +2955,34 @@ export default function App() {
                   </div>
 
                   {/* SELL SHORT COLUMN */}
-                  <div className="space-y-3 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
-                    <div className="flex justify-between items-center text-[10px] font-mono border-b border-slate-900/45 pb-1.5">
-                      <span className="text-rose-500 font-extrabold flex items-center gap-1 uppercase">
-                        <span className="h-1 w-1 rounded-full bg-rose-500 animate-pulse"></span>
+                  <div className="space-y-2.5 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
+                    <div className="flex justify-between items-center text-[10px] pb-1 border-b border-slate-900/40">
+                      <span className="text-rose-500 font-bold tracking-wider uppercase flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-505 animate-pulse"></span>
                         Sell SHORT ({activeAsset.symbol})
                       </span>
                     </div>
 
                     {spotType === 'limit' && (
-                      <div className="space-y-0.5">
-                        <label className="text-[8px] font-bold text-slate-400 uppercase block tracking-wider">Limit (USDT)</label>
+                      <div className="space-y-1">
+                        <label className="text-[10px] md:text-[11px] font-bold text-slate-450 uppercase tracking-wide block">Limit (USDT)</label>
                         <input 
                           type="number" 
                           step={activeAsset.decimals > 2 ? 0.0001 : 1}
                           value={spotPriceLimit} 
                           onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
-                          className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-xs font-bold py-1 text-white focus:outline-none focus:border-rose-500" 
+                          className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                         />
                       </div>
                     )}
 
-                    <div className="space-y-1.5">
-                      <div className="flex flex-col sm:grid sm:grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qty ({activeAsset.symbol})</label>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Qty ({activeAsset.symbol})</label>
+                            <span className="text-[8px] text-slate-550 font-mono">Size</span>
+                          </div>
                           <input 
                             type="number" 
                             step="any"
@@ -2779,11 +2995,14 @@ export default function App() {
                               }
                             }}
                             onChange={(e) => handleQtyChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
+                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Stake (USD)</label>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stake (USD)</label>
+                            <span className="text-[8px] text-slate-550 font-mono">Total</span>
+                          </div>
                           <input 
                             type="number" 
                             step="any"
@@ -2798,18 +3017,46 @@ export default function App() {
                               }
                             }}
                             onChange={(e) => handleUsdChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded text-center font-mono text-[13px] font-bold py-2 text-white" 
+                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                           />
                         </div>
+
+                        {/* Stop Loss (New Feature!) */}
+                        <div>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stop Loss (%)</label>
+                            <span className="text-[8px] text-amber-500 font-mono">Protection</span>
+                          </div>
+                          <div className="relative">
+                            <input 
+                              type="number" 
+                              min="1"
+                              max="99"
+                              placeholder="None"
+                              value={sellStopLoss} 
+                              onChange={(e) => setSellStopLoss(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                            />
+                            {sellStopLoss && (
+                              <button 
+                                onClick={() => setSellStopLoss('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 hover:text-rose-400 font-mono px-1 bg-slate-950"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
                       </div>
 
                       {/* Presets */}
-                      <div className="grid grid-cols-5 gap-1">
+                      <div className="grid grid-cols-5 gap-1 mt-1.5">
                         {[10, 25, 50, 75, 100].map((perc) => (
                           <button 
                             key={perc} 
                             onClick={() => handlePresetPercentage(perc)}
-                            className="rounded py-0.5 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            className="rounded py-1 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
                           >
                             {perc}%
                           </button>
@@ -3295,6 +3542,7 @@ export default function App() {
         currentUser={currentUser}
         onUpdateUser={handleUserUpdate}
         onLogout={handleLogout}
+        tradeHistory={tradeHistory}
       />
 
       <InviteModal 
@@ -3318,6 +3566,14 @@ export default function App() {
         onClose={() => setIsAdminOpen(false)}
         theme={theme}
         triggerToast={triggerToast}
+      />
+
+      <SessionTimeoutModal
+        isOpen={isSessionTimeoutOpen}
+        secondsRemaining={sessionSecondsRemaining}
+        onKeepAlive={handleKeepAlive}
+        onClearSession={handleExpireSession}
+        theme={theme}
       />
 
     </div>

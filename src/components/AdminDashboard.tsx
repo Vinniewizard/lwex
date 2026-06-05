@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { X, Users, TrendingUp, DollarSign, ArrowDownCircle, BarChart2, Pin, PinOff, MessageSquare, Settings, Clock, Trash, Sparkles, Search } from 'lucide-react';
+import { X, Users, TrendingUp, DollarSign, ArrowDownCircle, BarChart2, Pin, PinOff, MessageSquare, Settings, Clock, Trash, Sparkles, Search, Globe } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -101,7 +101,13 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
   const [loginMethod, setLoginMethod] = useState<'creds' | 'key'>('creds');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'deposits' | 'completed_deposits' | 'withdrawals' | 'game' | 'telegram'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'deposits' | 'completed_deposits' | 'withdrawals' | 'game' | 'telegram' | 'visits'>('stats');
+  const [visitsData, setVisitsData] = useState<{
+    visitsCount: number;
+    uniqueVisitors: number;
+    lwexCount: number;
+    recentVisits: any[];
+  } | null>(null);
   const [pendingDeposits, setPendingDeposits] = useState<PendingDeposit[]>([]);
   const [completedDeposits, setCompletedDeposits] = useState<CompletedDeposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
@@ -438,11 +444,12 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
   const fetchData = async (key: string) => {
     setLoading(true);
     try {
-      const [usersRes, statsRes, transRes, gameRes] = await Promise.all([
+      const [usersRes, statsRes, transRes, gameRes, visitsRes] = await Promise.all([
         fetch('/api/admin/users', { headers: { 'x-admin-key': key } }),
         fetch('/api/admin/stats', { headers: { 'x-admin-key': key } }),
         fetch('/api/admin/transactions', { headers: { 'x-admin-key': key } }),
-        fetch('/api/admin/game-settings', { headers: { 'x-admin-key': key } })
+        fetch('/api/admin/game-settings', { headers: { 'x-admin-key': key } }),
+        fetch('/api/admin/visits', { headers: { 'x-admin-key': key } })
       ]);
 
       if (usersRes.ok && statsRes.ok) {
@@ -450,6 +457,11 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
         const statsData = await statsRes.json();
         const transData = await transRes.json();
         const gameData = await gameRes.json();
+        
+        if (visitsRes && visitsRes.ok) {
+          const vData = await visitsRes.json();
+          setVisitsData(vData);
+        }
 
         setUsers(usersData.users);
         setStats(statsData.stats);
@@ -920,7 +932,8 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                 { id: 'completed_deposits', label: 'Completed Deposits', icon: ArrowDownCircle },
                 { id: 'withdrawals', label: 'Withdrawals', icon: ArrowDownCircle },
                 { id: 'game', label: 'Game Control', icon: DollarSign },
-                { id: 'telegram', label: 'Telegram Analytics', icon: BarChart2 }
+                { id: 'telegram', label: 'Telegram Analytics', icon: BarChart2 },
+                { id: 'visits', label: 'Traffic & Referrals', icon: Globe }
               ].map(tab => {
                 const isActive = activeTab === tab.id;
                 return (
@@ -1440,6 +1453,7 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                               className={`w-full rounded px-3 py-2 text-sm border focus:outline-none focus:border-yellow-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 text-black'}`}
                             >
                               <option value="unverified">Unverified (Default)</option>
+                              <option value="pending">⏳ Pending Review</option>
                               <option value="verified">Verified (Approved)</option>
                               <option value="rejected">Rejected / Blacklisted</option>
                             </select>
@@ -2690,6 +2704,106 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                           </div>
                         )}
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'visits' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
+                    <div>
+                      <h3 className="text-lg font-bold">Platform Traffic & Visit Metrics</h3>
+                      <p className="text-xs text-slate-500">Real-time visitor counts, referrer logs, and lwex.onrender.com analytics hits.</p>
+                    </div>
+                  </div>
+
+                  {/* Metrics widgets */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="rounded-xl p-4 border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-zinc-950/20">
+                      <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Total Platform Visits</p>
+                      <p className="text-3xl font-black mt-1 font-mono text-yellow-500">{visitsData?.visitsCount ?? 0}</p>
+                      <p className="text-[9px] text-slate-400 mt-1">Aggregate page hits loaded</p>
+                    </div>
+
+                    <div className="rounded-xl p-4 border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-zinc-950/20">
+                      <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Unique Direct Visitors</p>
+                      <p className="text-3xl font-black mt-1 font-mono text-purple-500">{visitsData?.uniqueVisitors ?? 0}</p>
+                      <p className="text-[9px] text-slate-400 mt-1">Unique remote IP entities</p>
+                    </div>
+
+                    <div className="rounded-xl p-4 border border-yellow-500/30 bg-yellow-500/5">
+                      <p className="text-[10px] text-yellow-500/80 font-extrabold uppercase tracking-wider">render.com Domains Hits</p>
+                      <p className="text-3xl font-black mt-1 font-mono text-yellow-400">{visitsData?.lwexCount ?? 0}</p>
+                      <p className="text-[9px] text-yellow-500/55 mt-1">Visits on or referred by lwex.onrender.com</p>
+                    </div>
+                  </div>
+
+                  {/* Visit logs list */}
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-zinc-950/20 overflow-hidden">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+                      <h4 className="font-bold text-sm">Recent Traffic Audit Log</h4>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs text-slate-400">
+                        <thead className="bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[10px] font-bold">
+                          <tr>
+                            <th className="p-3">Time</th>
+                            <th className="p-3">IP Address</th>
+                            <th className="p-3">User Identification</th>
+                            <th className="p-3">Request Domain</th>
+                            <th className="p-3">Referrer Location</th>
+                            <th className="p-3">Path</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
+                          {!visitsData?.recentVisits || visitsData.recentVisits.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="p-6 text-center text-slate-500 italic">
+                                No visitor traffic logged yet. Browse around the platform to trigger logs.
+                              </td>
+                            </tr>
+                          ) : (
+                            visitsData.recentVisits.map((v: any) => {
+                              const isLwexSource = (v.host && v.host.includes('lwex.onrender.com')) || (v.referrer && v.referrer.includes('lwex.onrender.com'));
+                              return (
+                                <tr key={v.id} className={`hover:bg-slate-200/20 dark:hover:bg-zinc-900/40 transition-colors ${isLwexSource ? 'bg-yellow-500/5' : ''}`}>
+                                  <td className="p-3 text-slate-900 dark:text-slate-200 whitespace-nowrap">
+                                    {new Date(v.created_at).toLocaleString()}
+                                  </td>
+                                  <td className="p-3 text-slate-500 dark:text-slate-400">
+                                    {v.ip}
+                                  </td>
+                                  <td className="p-3">
+                                    {v.user_id ? (
+                                      <span className="bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                        UID: {v.user_id}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-500 italic">Anonymous</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-indigo-400 truncate max-w-[150px]" title={v.host}>
+                                    {v.host || '---'}
+                                  </td>
+                                  <td className="p-3 truncate max-w-[200px]" title={v.referrer}>
+                                    {v.referrer ? (
+                                      <span className={v.referrer.includes('lwex.onrender.com') ? 'text-yellow-400 font-bold' : 'text-slate-400'}>
+                                        {v.referrer}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-500 italic">Direct</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-emerald-400">
+                                    {v.path || '/'}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>

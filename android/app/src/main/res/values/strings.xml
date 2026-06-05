@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MariTech</string>
+    <string name="title_activity_main">MariTech</string>
+    <string name="package_name">com.maritech.trading</string>
+    <string name="custom_url_scheme">com.maritech.trading</string>
+</resources>
