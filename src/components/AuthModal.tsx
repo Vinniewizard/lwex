@@ -261,13 +261,13 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
           <div className="absolute bottom-4 left-6">
             <h2 className="text-2xl font-bold text-white tracking-tight">
               {view === 'login' && 'Access Your Edge'}
-              {view === 'register' && 'Enter the Arena'}
+              {view === 'register' && 'Grab Free Bonus'}
               {view === 'forgot_password' && 'Reset Password'}
               {view === 'reset_password' && 'Enter New Password'}
             </h2>
             <p className="text-white/90 text-xs mt-1 font-medium">
               {view === 'login' && 'Sign in to execute trades and manage your elite portfolio.'}
-              {view === 'register' && 'Trade faster, smarter, and break your limits. Join the elite.'}
+              {view === 'register' && 'Sign up to grab your free bonus. Start trading and win instantly.'}
               {view === 'forgot_password' && "We'll send you instructions to reset it."}
               {view === 'reset_password' && "Enter the token we sent and your new password."}
             </p>
