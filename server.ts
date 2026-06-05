@@ -662,7 +662,7 @@ async function loadCashierLedger(): Promise<CashierLedger> {
     const db = getD1Database();
     // Use raw sqlite/pg compatible read
     const query = "SELECT game_settings FROM app_settings WHERE id = 'global'";
-    const res = await db.prepare(query).first<{ game_settings: string }>();
+    const res = (await db.prepare(query).first()) as any;
     if (res && res.game_settings) {
       try {
         const dbSettings = JSON.parse(res.game_settings);
