@@ -128,7 +128,7 @@ export default function WizardBot({
   useEffect(() => {
     if (currentUser) {
       fetch('/api/users/referrals', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('lwex_session_token') || ''}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('lwex_token') || ''}` }
       })
       .then(r => r.json())
       .then(d => {
@@ -155,7 +155,7 @@ export default function WizardBot({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userToken: localStorage.getItem('lwex_session_token'),
+          userToken: localStorage.getItem('lwex_token'),
           content: `Wizard Bot generated a simulated payment for ${amount} ${coin}.`,
           imageUrl: generateSimulatedScreenshot(amount, coin),
           isBot: true
@@ -176,7 +176,7 @@ export default function WizardBot({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userToken: localStorage.getItem('lwex_session_token') || '',
+          userToken: localStorage.getItem('lwex_token') || '',
           content: userText,
           isBot: false
         })
@@ -729,19 +729,17 @@ export default function WizardBot({
             ⚙️ Onboard
           </button>
         )}
-        {isAdmin && (
-          <button 
-            onClick={() => setBotTab('qa')}
-            className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all flex items-center justify-center space-x-1 shrink-0 ${
-              botTab === 'qa' 
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-950' 
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <MessageSquare className="w-3 h-3 text-emerald-500" />
-            <span>Support</span>
-          </button>
-        )}
+        <button 
+          onClick={() => setBotTab('qa')}
+          className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all flex items-center justify-center space-x-1 shrink-0 ${
+            botTab === 'qa' 
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-950' 
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare className="w-3 h-3 text-emerald-500" />
+          <span>Support</span>
+        </button>
         <button 
           onClick={() => setBotTab('group')}
           className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all flex items-center justify-center space-x-1 shrink-0 ${
@@ -1514,7 +1512,7 @@ export default function WizardBot({
         )}
 
         {/* ============ TAB: DIRECT PLATFORM Q&A ============ */}
-        {botTab === 'qa' && isAdmin && (
+        {botTab === 'qa' && (
           <div className="flex flex-col flex-1 pb-4">
             <div className={`p-4 border-b ${
               isDark ? 'border-zinc-850 bg-zinc-900/40' : 'border-gray-100 bg-gray-50/20'
