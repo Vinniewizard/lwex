@@ -51,7 +51,7 @@ export const ASSETSList: Asset[] = [
   },
   {
     id: 'R_100',
-    name: 'Wizard’s Eye',
+    name: 'LWEX Oracle',
     symbol: 'WIZARD',
     type: 'syndicate',
     price: 9815.10,
@@ -59,7 +59,7 @@ export const ASSETSList: Asset[] = [
     volatility: 2.1,
     trendBias: -0.001,
     decimals: 2,
-    description: 'Rapid-fire market execution with extreme frequency, simulating the chaotic precision of the Wizard’s Eye.'
+    description: 'Rapid-fire market execution with extreme frequency, simulating the chaotic precision of the LWEX Oracle.'
   },
   {
     id: 'J_10',

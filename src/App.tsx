@@ -2115,11 +2115,11 @@ export default function App() {
                 ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/10' 
                 : 'text-slate-450 hover:bg-slate-900/50 hover:text-white'
             }`}
-            title={desktopSidebarCollapsed ? "Wizard Bot" : undefined}
+            title={desktopSidebarCollapsed ? "LWEX Copilot" : undefined}
           >
             <div className={`flex items-center ${desktopSidebarCollapsed ? '' : 'space-x-3'}`}>
               <Bot className="w-4 h-4 text-purple-400 shrink-0 animate-pulse" />
-              {!desktopSidebarCollapsed && <span>Wizard Bot</span>}
+              {!desktopSidebarCollapsed && <span>LWEX Copilot</span>}
             </div>
             {!desktopSidebarCollapsed && (
               <span className="text-[8px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded-full shrink-0">NEW</span>
@@ -3392,17 +3392,17 @@ export default function App() {
               <div>
                 <span className="inline-flex items-center space-x-1.5 bg-purple-500/25 border border-purple-500/30 text-purple-300 rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider block w-max">
                   <Bot className="w-3 h-3 animate-spin text-purple-400" />
-                  <span>Wizard Bot Active</span>
+                  <span>LWEX AI Copilot</span>
                 </span>
                 <h3 className="text-xs font-black text-white uppercase tracking-wide mt-2">SMART TRADING SIGNALS</h3>
-                <p className="text-[10px] text-slate-400 mt-1">Get real-time insights, standard binary options strategies, and chat with members.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Get real-time insights, algorithmic strategies, and consult your dedicated quant bot.</p>
               </div>
 
               <button 
                 onClick={() => setIsCopilotOpen(true)}
                 className="bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 hover:border-indigo-400 font-extrabold text-white text-[10px] uppercase py-2 tracking-wider rounded transition-all text-center select-none shadow-[0_4px_12px_rgba(79,70,229,0.3)] animate-pulse"
               >
-                Open Wizard Bot
+                Access LWEX Copilot
               </button>
             </div>
 
@@ -3480,13 +3480,13 @@ export default function App() {
 
               <div className="flex items-center space-x-2 text-[10px] text-amber-500 font-mono tracking-wider font-extrabold uppercase">
                 <Sparkles className="w-4 h-4 animate-spin" />
-                <span>Wizard Market Commentary</span>
+                <span>LWEX Market Commentary</span>
               </div>
 
               <h4 className="text-sm font-extrabold text-white leading-snug">{newsDetail.title}</h4>
 
               <div className="p-4 rounded-xl bg-slate-950 text-xs text-slate-300 leading-relaxed font-mono border border-slate-850 space-y-2">
-                <span className="font-black text-emerald-500 block uppercase text-[10px]">Wizard AI Analysis:</span>
+                <span className="font-black text-emerald-500 block uppercase text-[10px]">LWEX AI Analysis:</span>
                 <p>{newsDetail.opinion}</p>
                 <p className="text-[9px] text-slate-400">Disclaimer: Esoteric mathematical models exhibit drift variance. Ensure proper stake bounds on binary option contracts.</p>
               </div>
@@ -3495,7 +3495,7 @@ export default function App() {
                 onClick={() => { setNewsDetail(null); setIsCopilotOpen(true); }}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs uppercase py-2 rounded transition-colors text-center block"
               >
-                Ask Wizard Bot
+                Ask LWEX Copilot
               </button>
             </div>
           </div>
@@ -3528,7 +3528,7 @@ export default function App() {
           className={`fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer ${
             isDark ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-purple-600 text-white hover:bg-purple-700'
           }`}
-          title="Ask Wizard Bot for market reports"
+          title="Ask LWEX Copilot for market reports"
         >
           <Bot className="h-6 h-6 animate-pulse" />
         </button>

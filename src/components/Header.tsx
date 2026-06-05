@@ -241,7 +241,7 @@ export default function Header({
               }`}
             >
               {account.mode === 'real' && !currentUser ? (
-                <span className="text-[11px] md:text-xs font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login to View</span>
+                <span className="text-[11px] md:text-xs font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Join to View</span>
               ) : (
                 <>
                   <span className="text-xs font-semibold select-none">$</span>
@@ -277,7 +277,7 @@ export default function Header({
             ) : (
               <>
                 <Lock className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
-                <span>Login</span>
+                <span>Join Arena</span>
               </>
             )}
           </button>
@@ -396,7 +396,7 @@ export default function Header({
             }`}
           >
             {account.mode === 'real' && !currentUser ? (
-              <span className="text-[10px] font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Login</span>
+              <span className="text-[10px] font-sans tracking-tight uppercase" onClick={onOpenAuth} style={{cursor: 'pointer'}}>Join</span>
             ) : (
               <>
                 <span>$</span>

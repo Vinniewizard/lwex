@@ -10,33 +10,33 @@ interface WalkthroughProps {
 const steps = [
   {
     target: 'body',
-    content: 'Welcome to Maritech! Let us take a quick tour of the trading platform.',
+    content: 'Welcome to the LWEX Terminal. The fastest institutional-grade trading platform. Let\'s begin your edge.',
     placement: 'center' as const,
     disableBeacon: true,
   },
   {
     target: '.tour-asset-selector',
-    content: 'Here you can pick which asset you want to trade (e.g. Synthetic indices, Cryptocurrencies, etc).',
+    content: 'Select your core trading instrument here. We offer high-frequency synthetic indices and premium cryptocurrencies.',
     placement: 'bottom' as const,
   },
   {
     target: '.tour-chart',
-    content: 'This is the main chart area where you can observe real-time spot price movements.',
+    content: 'The primary terminal chart. Observe real-time spot price movements with zero latency.',
     placement: 'bottom' as const,
   },
   {
     target: '.tour-trade-controls',
-    content: 'Here you configure your trade. Pick your contract duration, enter your stake, and choose your trade direction (Rise or Fall).',
+    content: 'Execute with precision. Configure your contract duration, size, and definitive market direction.',
     placement: 'left' as const,
   },
   {
     target: '.tour-positions',
-    content: 'Once you buy a contract, it appears under Open Positions. Follow its active profit/loss here.',
+    content: 'Your live portfolio. Track active profit/loss in real time as your contracts run.',
     placement: 'right' as const,
   },
   {
     target: '.tour-account',
-    content: 'Manage your real/demo funds, deposit, and adjust settings from the sidebar. You are ready!',
+    content: 'Manage liquidity, transition between demo testing and live capital, and optimize settings here. Enter the Arena.',
     placement: 'bottom' as const,
   }
 ];

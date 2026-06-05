@@ -90,7 +90,7 @@ export default function WizardBot({
     {
       id: 'init-msg',
       sender: 'ai',
-      text: `Greetings, seeker of market wisdom! I am Wizard Bot. I have peered into the mystical charts of ${asset.name} and analyzed the Moving Average incantations. Ask your question, and I shall consult the digital oracle for you.`,
+      text: `Welcome to the LWEX AI Terminal. I am your quantitative copilot. I am currently monitoring the order book and liquidity flow for ${asset.name}. How can I assist your execution strategy today?`,
       timestamp: Date.now()
     }
   ]);
@@ -156,7 +156,7 @@ export default function WizardBot({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userToken: localStorage.getItem('lwex_token'),
-          content: `Wizard Bot generated a simulated payment for ${amount} ${coin}.`,
+          content: `LWEX Copilot generated a simulated payment for ${amount} ${coin}.`,
           imageUrl: generateSimulatedScreenshot(amount, coin),
           isBot: true
         })
@@ -652,7 +652,7 @@ export default function WizardBot({
           </div>
           <div>
             <h3 className="text-xs font-bold font-sans tracking-tight flex items-center space-x-1 text-slate-900 dark:text-white">
-              <span>Wizard Bot Central</span>
+              <span>LWEX AI Console</span>
               <Sparkles className="h-3 w-3 text-purple-500" />
             </h3>
             <span className="text-[9px] text-gray-400 block font-bold font-mono tracking-wider text-left">LWEX GROUP SYSTEM</span>
@@ -966,7 +966,7 @@ export default function WizardBot({
                 <div className="flex flex-col space-y-3 flex-1 justify-between">
                   <div className="space-y-1">
                     <p className="text-[10px] text-gray-400 leading-normal mb-2 text-left">
-                      Test Wizard Bot interactions in the group below! Send simulated commands or messages to inspect how it answers in real-time.
+                      Test LWEX Copilot interactions in the group below! Send simulated commands or messages to inspect how it answers in real-time.
                     </p>
                     
                     {/* Simulated Telegram Group Shell */}
@@ -994,7 +994,7 @@ export default function WizardBot({
                       {/* Log feed */}
                       <div className="flex-1 overflow-y-auto p-2.5 space-y-2 text-[10px] scrollbar-thin flex flex-col">
                         {tgLogs.slice(-25).map((log) => {
-                          const isBot = log.sender === 'Wizard Bot' || log.sender === 'System Manager' || log.sender === 'Telegram API';
+                          const isBot = log.sender === 'LWEX Copilot' || log.sender === 'Wizard Bot' || log.sender === 'System Manager' || log.sender === 'Telegram API';
                           return (
                             <div key={log.id} className={`p-2 rounded-lg text-left max-w-[90%] ${
                               isBot 
