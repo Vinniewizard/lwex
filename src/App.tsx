@@ -1553,7 +1553,9 @@ export default function App() {
     barrierOffset?: number;
     targetDigit?: number;
     stopLoss?: number;
+    targetAsset?: Asset;
   }) => {
+    const tradeAsset = config.targetAsset || activeAsset;
     const minS = (gameSettings as any).minStake || 1;
     const maxS = (gameSettings as any).maxStake || 5000;
     
@@ -1575,8 +1577,8 @@ export default function App() {
       return;
     }
 
-    const currentTickHistory = assetsTicksMap[activeAsset.id] || [];
-    const latestPrice = currentTickHistory[currentTickHistory.length - 1]?.price || activeAsset.price;
+    const currentTickHistory = assetsTicksMap[tradeAsset.id] || [];
+    const latestPrice = currentTickHistory[currentTickHistory.length - 1]?.price || tradeAsset.price;
 
     const ratePercentage = gameSettings.payoutRate !== undefined ? gameSettings.payoutRate : 95.5;
     const payoutRate = ratePercentage / 100;
@@ -1597,9 +1599,9 @@ export default function App() {
 
     const newContract: Contract = {
       id: `mt-${Math.random().toString(36).substring(2, 12)}`,
-      assetId: activeAsset.id,
-      assetName: activeAsset.name,
-      assetSymbol: activeAsset.symbol,
+      assetId: tradeAsset.id,
+      assetName: tradeAsset.name,
+      assetSymbol: tradeAsset.symbol,
       type: config.type,
       direction: config.direction,
       stake: config.stake,
@@ -2250,35 +2252,65 @@ export default function App() {
               {assetDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setAssetDropdownOpen(false)} />
-                  <div className="absolute left-0 mt-2 w-64 rounded-xl border border-slate-800 bg-slate-950/95 shadow-2xl z-50 p-2 max-h-96 overflow-y-auto animate-fade-in divide-y divide-slate-900 scrollbar-thin">
+                  <div className="absolute left-0 mt-2 w-72 rounded-xl border border-slate-800 bg-slate-950/95 shadow-2xl z-50 p-2 max-h-96 overflow-y-auto animate-fade-in divide-y divide-slate-900 scrollbar-thin">
                     <div className="text-[8px] font-black tracking-widest text-slate-500 uppercase pb-1.5 pt-0.5 px-2">CHOOSE TRADING INSTRUMENT</div>
                     <div className="py-1 space-y-0.5">
                       {assetsRegistry.map((asset) => {
                         const selected = asset.id === activeAsset.id;
+                        const isPopular = ['CRY_BTCUSD', 'FRX_EURUSD', 'R_100', 'R_50'].includes(asset.id);
                         return (
-                          <button
+                          <div
                             key={asset.id}
-                            onClick={() => {
-                              setActiveAsset(asset);
-                              setAssetDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between text-left p-2 rounded-lg transition-colors cursor-pointer ${
+                            className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
                               selected 
-                                ? 'bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30' 
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' 
                                 : 'text-slate-300 hover:bg-slate-900/80 hover:text-white border border-transparent'
                             }`}
                           >
-                            <div className="flex flex-col min-w-0">
+                            <div 
+                              className="flex flex-col min-w-0 flex-1 cursor-pointer"
+                              onClick={() => {
+                                setActiveAsset(asset);
+                                setAssetDropdownOpen(false);
+                              }}
+                            >
                               <span className="text-[11px] font-black truncate">{asset.name}</span>
                               <span className="text-[9px] text-slate-500 font-bold uppercase">{asset.symbol}/USDT</span>
                             </div>
-                            <div className="text-right font-mono text-[10px] shrink-0">
-                              <div className="font-extrabold text-slate-200">${asset?.price?.toFixed(asset?.decimals ?? 2) ?? '0.00'}</div>
-                              <div className={`text-[9px] font-black ${asset.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                {asset.change !== undefined ? (asset.change >= 0 ? '+' : '') + asset.change.toFixed(2) + '%' : '0.00%'}
+                            
+                            <div className="flex items-center gap-2 shrink-0 h-full">
+                              {isPopular && (
+                                <button
+                                  onClick={(e) => {
+                                    handlePurchaseContract({
+                                      targetAsset: asset,
+                                      type: 'rise-fall',
+                                      direction: 'rise',
+                                      stake: 10,
+                                      duration: 5,
+                                      durationUnit: 'ticks'
+                                    });
+                                    setAssetDropdownOpen(false);
+                                  }}
+                                  className="px-1.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/30 text-emerald-400 text-[8px] font-bold uppercase rounded border border-emerald-500/20 transition-colors z-10 cursor-pointer"
+                                  title="Quick Buy Call ($10)"
+                                >
+                                  Quick Buy
+                                </button>
+                              )}
+                              <div className="text-right font-mono text-[10px] cursor-pointer"
+                                onClick={() => {
+                                  setActiveAsset(asset);
+                                  setAssetDropdownOpen(false);
+                                }}
+                              >
+                                <div className="font-extrabold text-slate-200">${asset?.price?.toFixed(asset?.decimals ?? 2) ?? '0.00'}</div>
+                                <div className={`text-[9px] font-black ${asset.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                  {asset.change !== undefined ? (asset.change >= 0 ? '+' : '') + asset.change.toFixed(2) + '%' : '0.00%'}
+                                </div>
                               </div>
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
