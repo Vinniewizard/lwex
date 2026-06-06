@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Gift, Users, Award, Landmark, Copy, Check, Share2, Sparkles, TrendingUp } from 'lucide-react';
+import { X, Gift, Users, Award, Landmark, Copy, Check, Share2, Sparkles, TrendingUp, Facebook, Settings } from 'lucide-react';
 
 interface InviteModalProps {
   isOpen: boolean;
@@ -11,6 +11,8 @@ interface InviteModalProps {
 
 export default function InviteModal({ isOpen, onClose, currentUser, theme, triggerToast }: InviteModalProps) {
   const [copied, setCopied] = useState(false);
+  const [fbUrl, setFbUrl] = useState('');
+  const [isFbLinked, setIsFbLinked] = useState(false);
   const isDark = theme === 'dark';
 
   if (!isOpen) return null;
@@ -176,6 +178,62 @@ export default function InviteModal({ isOpen, onClose, currentUser, theme, trigg
             <button className="bg-amber-500/20 text-amber-400 hover:bg-amber-500 text-[9px] font-black px-3 py-1.5 rounded-md uppercase tracking-wide transition-all select-none shrink-0 border border-amber-500/30">
               Active Tier
             </button>
+          </div>
+
+          {/* Facebook Automations Bot */}
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-1">
+                  <Facebook className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span>Facebook Auto-Inviter Bot</span>
+                  <span className="text-[7px] bg-blue-500 text-white px-1 rounded-sm ml-1 uppercase">Beta</span>
+                </span>
+                <p className="text-[11px] text-slate-300">
+                  Deploy our intelligent bot to automate friend requests, mass-invite users to your Facebook Page, and distribute your referral link automatically via Messenger.
+                </p>
+                {isFbLinked && (
+                  <p className="text-[10px] text-emerald-400 font-mono mt-1 w-full truncate max-w-[200px]" title={fbUrl}>
+                    Linked: {fbUrl}
+                  </p>
+                )}
+              </div>
+              {!isFbLinked ? (
+                <div className="flex flex-col gap-2 shrink-0 w-36">
+                  <input
+                    type="text"
+                    placeholder="Page Link (e.g. fb.com/lwex)"
+                    value={fbUrl}
+                    onChange={(e) => setFbUrl(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <button 
+                    onClick={() => {
+                      if (!fbUrl) {
+                        triggerToast("Enter a Facebook Page URL first", false);
+                        return;
+                      }
+                      triggerToast("Link Established! Permissions granted.", true);
+                      setIsFbLinked(true);
+                    }}
+                    className="w-full bg-blue-600/20 hover:bg-blue-600 border border-blue-500 text-white text-[9px] font-black px-2 py-1.5 rounded uppercase tracking-wide transition-all shadow-[0_4px_12px_rgba(37,99,235,0.1)] active:scale-95 cursor-pointer text-center"
+                  >
+                    Link Platform
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => {
+                    triggerToast(`Facebook Copilot connecting to ${fbUrl}... (Simulation Started)`, true);
+                    setTimeout(() => triggerToast("Bot deployed: Extracting target audience from Facebook Graph...", true), 2500);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-4 py-2 mt-1 flex items-center gap-1.5 rounded-md uppercase tracking-wide transition-all shadow-[0_4px_12px_rgba(37,99,235,0.3)] shrink-0 active:scale-95 cursor-pointer h-max"
+                >
+                  <Settings className="w-3 h-3 animate-spin" />
+                  Deploy Bot
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
