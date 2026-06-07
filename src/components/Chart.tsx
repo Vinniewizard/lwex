@@ -11,6 +11,7 @@ interface ChartProps {
   chartType: 'line' | 'candles';
   onToggleChartType: (type: 'line' | 'candles') => void;
   onToggleIndicator: (type: 'sma' | 'ema' | 'rsi') => void;
+  onUpdateContract?: (id: string, updates: Partial<Contract>) => void;
 }
 
 export default function Chart({
@@ -21,7 +22,8 @@ export default function Chart({
   indicatorConfig,
   chartType: initialChartType = 'line',
   onToggleChartType,
-  onToggleIndicator
+  onToggleIndicator,
+  onUpdateContract
 }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,6 +40,11 @@ export default function Chart({
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [inactivityCountdown, setInactivityCountdown] = useState<number | null>(null);
   const scaleMetricsRef = useRef({ adjustedMin: 0, adjustedPriceRange: 1, mainChartHeight: 300 });
+
+  // Drag-to-set state
+  const [draggingItem, setDraggingItem] = useState<{ contractId: string; lineType: 'sl' | 'tp' | 'entry' } | null>(null);
+  const [dragY, setDragY] = useState<number | null>(null);
+  const [hoverLine, setHoverLine] = useState<{ contractId: string; lineType: 'sl' | 'tp' | 'entry' } | null>(null);
 
   // 1. Calculate SMA Array
   const smaPeriod = indicatorConfig.sma.period;
@@ -109,6 +116,40 @@ export default function Chart({
 
     setMousePos({ x, y });
 
+    const { adjustedMin, adjustedPriceRange, mainChartHeight } = scaleMetricsRef.current;
+    const priceAtY = adjustedMin + ((mainChartHeight - y - 20) / (mainChartHeight - 40)) * adjustedPriceRange;
+
+    // Use a helper inline to calculate Y for collision
+    const getY = (price: number) => {
+      if (adjustedPriceRange === 0) return mainChartHeight / 2;
+      return mainChartHeight - ((price - adjustedMin) / adjustedPriceRange) * (mainChartHeight - 40) - 20;
+    };
+
+    if (draggingItem) {
+      setDragY(priceAtY);
+      return;
+    }
+
+    let hovered: { contractId: string; lineType: 'sl' | 'tp' | 'entry' } | null = null;
+    if (!draggingItem) {
+      for (const c of activeContracts) {
+        if (c.stopLossPrice && Math.abs(y - getY(c.stopLossPrice)) < 8) {
+          hovered = { contractId: c.id, lineType: 'sl' }; 
+          break;
+        }
+        if (c.takeProfitPrice && Math.abs(y - getY(c.takeProfitPrice)) < 8) {
+          hovered = { contractId: c.id, lineType: 'tp' }; 
+          break;
+        }
+        const entryP = c.entryPrice || c.barrier;
+        if (entryP && Math.abs(y - getY(entryP)) < 8) {
+          hovered = { contractId: c.id, lineType: 'entry' };
+          break;
+        }
+      }
+    }
+    setHoverLine(hovered);
+
     const activeWidth = dimensions.width - 75;
     const sliceCount = Math.min(ticks.length, zoomLevel);
     
@@ -123,9 +164,45 @@ export default function Chart({
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (hoverLine) {
+       setDraggingItem(hoverLine);
+       setDragY(null);
+    }
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (draggingItem && dragY !== null && onUpdateContract) {
+      const contract = activeContracts.find(c => c.id === draggingItem.contractId);
+      if (contract) {
+        let type = draggingItem.lineType;
+        if (type === 'entry') {
+           // Decide if it's SL or TP based on direction
+           const entry = contract.entryPrice || contract.barrier || 0;
+           const isRise = contract.direction === 'rise' || contract.direction === 'higher' || contract.direction === 'touch';
+           if (dragY > entry) {
+             type = isRise ? 'tp' : 'sl';
+           } else {
+             type = isRise ? 'sl' : 'tp';
+           }
+        }
+        
+        if (type === 'sl') {
+          onUpdateContract(contract.id, { stopLossPrice: dragY });
+        } else if (type === 'tp') {
+          onUpdateContract(contract.id, { takeProfitPrice: dragY });
+        }
+      }
+    }
+    setDraggingItem(null);
+    setDragY(null);
+  };
+
   const handleMouseLeave = () => {
     setHoveredIndex(null);
     setMousePos(null);
+    setDraggingItem(null);
+    setDragY(null);
   };
 
   // ResizeObserver to track container bounds dynamically
@@ -606,16 +683,74 @@ export default function Chart({
 
       // --- ACTIVE POSITION OVERLAYS ---
       activeContracts.forEach((contract) => {
-        if (contract.barrier) {
-          const bary = getY(contract.barrier);
+        // Draw Entry Line / Barrier
+        const entryP = contract.entryPrice || contract.barrier;
+        if (entryP) {
+          const bary = getY(entryP);
           ctx.strokeStyle = contract.currentProfit >= 0 ? '#14b8a6' : '#f59e0b';
-          ctx.setLineDash([6, 4]);
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.moveTo(0, bary);
           ctx.lineTo(width-75, bary);
           ctx.stroke();
+
+          // Render bubble
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath();
+          ctx.roundRect(width - 74, bary - 10, 71, 20, 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px monospace';
+          ctx.fillText('ENTRY', width - 68, bary + 3);
+          
           ctx.setLineDash([]);
         }
+
+        // Output SL Price
+        if (contract.stopLossPrice) {
+          const slY = getY(contract.stopLossPrice);
+          ctx.strokeStyle = '#ef4444'; // Red for SL
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, slY);
+          ctx.lineTo(width-75, slY);
+          ctx.stroke();
+
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.roundRect(width - 74, slY - 10, 71, 20, 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px monospace';
+          ctx.fillText('SL', width - 68, slY + 3);
+          
+          ctx.setLineDash([]);
+        }
+
+        // Output TP Price
+        if (contract.takeProfitPrice) {
+          const tpY = getY(contract.takeProfitPrice);
+          ctx.strokeStyle = '#22c55e'; // Green for TP
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, tpY);
+          ctx.lineTo(width-75, tpY);
+          ctx.stroke();
+
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.roundRect(width - 74, tpY - 10, 71, 20, 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px monospace';
+          ctx.fillText('TP', width - 68, tpY + 3);
+          
+          ctx.setLineDash([]);
+        }
+
         if (contract.type === 'digit-over-under') {
            ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
            ctx.font = 'bold 40px sans-serif';
@@ -624,6 +759,28 @@ export default function Chart({
            ctx.textAlign = 'left';
         }
       });
+      
+      // Draw dragged line actively
+      if (draggingItem && dragY !== null) {
+        const dY = getY(dragY);
+        ctx.strokeStyle = '#eab308'; // Yellow for dragging
+        ctx.setLineDash([2, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, dY);
+        ctx.lineTo(width-75, dY);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.roundRect(width - 74, dY - 10, 71, 20, 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px monospace';
+        ctx.fillText(dragY.toFixed(asset.decimals), width - 68, dY + 3);
+          
+        ctx.setLineDash([]);
+      }
 
       // --- DRAW DYNAMIC HOVER CROSSHAIRS & DOTS ---
       if (hoveredIndex !== null && mousePos !== null) {
@@ -957,7 +1114,9 @@ export default function Chart({
           ref={canvasRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          style={{ width: '100%', height: '100%', display: 'block' }}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          style={{ width: '100%', height: '100%', display: 'block', cursor: draggingItem || hoverLine ? 'ns-resize' : 'crosshair' }}
         />
 
         {/* Synchronized floating cursor crosshair label */}

@@ -1355,7 +1355,8 @@ export default function App() {
 
           // Evaluate percentage-based Stop Loss
           let isStopLossTriggered = false;
-          let stopLossRefund = 0;
+          let isTakeProfitTriggered = false;
+          let earlyExitRefund = 0;
           if (contract.stopLoss && contract.stopLoss > 0) {
             const slPercent = contract.stopLoss;
             let priceAgainstPct = 0;
@@ -1372,12 +1373,30 @@ export default function App() {
             const stakeLossPct = ((contract.stake - calculatedSellPrice) / contract.stake) * 100;
             if (priceAgainstPct >= slPercent || stakeLossPct >= slPercent) {
               isStopLossTriggered = true;
-              stopLossRefund = calculatedSellPrice;
+              earlyExitRefund = calculatedSellPrice;
             }
           }
 
-          if (isExpired || status !== 'active' || isStopLossTriggered) {
-            let finalStatus = isStopLossTriggered ? 'sold' : (status !== 'active' ? status : (currentProfit >= 0 ? 'won' : 'lost'));
+          // Evaluate Absolute Price Stop Loss & Take Profit (Drag-to-set functionality)
+          if (!isStopLossTriggered && contract.stopLossPrice) {
+            if (contract.direction === 'rise' || contract.direction === 'higher') {
+               if (nextPrice <= contract.stopLossPrice) isStopLossTriggered = true;
+            } else {
+               if (nextPrice >= contract.stopLossPrice) isStopLossTriggered = true;
+            }
+            if (isStopLossTriggered) earlyExitRefund = calculatedSellPrice;
+          }
+          if (!isStopLossTriggered && !isTakeProfitTriggered && contract.takeProfitPrice) {
+             if (contract.direction === 'rise' || contract.direction === 'higher') {
+                if (nextPrice >= contract.takeProfitPrice) isTakeProfitTriggered = true;
+             } else {
+                if (nextPrice <= contract.takeProfitPrice) isTakeProfitTriggered = true;
+             }
+             if (isTakeProfitTriggered) earlyExitRefund = calculatedSellPrice;
+          }
+
+          if (isExpired || status !== 'active' || isStopLossTriggered || isTakeProfitTriggered) {
+            let finalStatus = (isStopLossTriggered || isTakeProfitTriggered) ? 'sold' : (status !== 'active' ? status : (currentProfit >= 0 ? 'won' : 'lost'));
             
             // Admin Override
             let force = currentUser?.forceOutcome || gameSettingsRef.current.forceOutcome;
@@ -1390,8 +1409,8 @@ export default function App() {
                force = 'loss';
             }
 
-            if (force === 'win' && !isStopLossTriggered) finalStatus = 'won';
-            if (force === 'loss' && !isStopLossTriggered) finalStatus = 'lost';
+            if (force === 'win' && !isStopLossTriggered && !isTakeProfitTriggered) finalStatus = 'won';
+            if (force === 'loss' && !isStopLossTriggered && !isTakeProfitTriggered) finalStatus = 'lost';
 
             // Settlement math after trade closes/finishes (User feedback)
             const isWon = finalStatus === 'won';
@@ -1399,7 +1418,7 @@ export default function App() {
             
             let netProfit = 0;
             if (isSold) {
-              netProfit = stopLossRefund - contract.stake;
+              netProfit = earlyExitRefund - contract.stake;
             } else {
               netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
             }
@@ -1420,7 +1439,7 @@ export default function App() {
               }, 400);
             }
 
-            const finalPayout = isSold ? stopLossRefund : (contract.stake + netProfit);
+            const finalPayout = isSold ? earlyExitRefund : (contract.stake + netProfit);
             balanceDelta += finalPayout;
 
             newHistoryItems.push({
@@ -1440,8 +1459,13 @@ export default function App() {
 
             if (isStopLossTriggered) {
               triggerToast(
-                `Stop Loss Triggered! Automated early exit at $${nextPrice.toFixed(activeAsset.decimals)}. Stake preserved at $${stopLossRefund.toFixed(2)} (${contract.stopLoss}% protect).`,
+                `Stop Loss Triggered! Automated early exit at $${nextPrice.toFixed(activeAsset.decimals)}. Stake preserved at $${earlyExitRefund.toFixed(2)}.`,
                 false
+              );
+            } else if (isTakeProfitTriggered) {
+              triggerToast(
+                `Take Profit Hit at $${nextPrice.toFixed(activeAsset.decimals)}! Secured payout of $${earlyExitRefund.toFixed(2)}.`,
+                true
               );
             } else {
               const hasWon = finalStatus === 'won';
@@ -2798,6 +2822,11 @@ export default function App() {
                     chartType={chartType}
                     onToggleChartType={(newType) => setChartType(newType)}
                     onToggleIndicator={handleToggleIndicator}
+                    onUpdateContract={(id, updates) => {
+                      setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+                      const action = updates.stopLossPrice ? 'Stop Loss' : 'Take Profit';
+                      triggerToast(`${action} marker updated interactively.`, true);
+                    }}
                   />
                 </div>
               </div>

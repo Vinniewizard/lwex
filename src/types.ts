@@ -45,6 +45,8 @@ export interface Contract {
   exitPrice?: number;
   exitTime?: number;
   stopLoss?: number; // Stop Loss percentage limit (e.g. 10 for 10% movement / loss)
+  stopLossPrice?: number;
+  takeProfitPrice?: number;
 }
 
 export interface TradeHistoryItem {
