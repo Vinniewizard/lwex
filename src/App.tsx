@@ -12,6 +12,7 @@ import AuthModal from './components/AuthModal';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
 import PriceAlertsManager from './components/PriceAlertsManager';
 import Walkthrough from './components/Walkthrough';
+import WelcomeModal from './components/WelcomeModal';
 import { ASSETSList } from './data';
 import { Asset, Tick, Contract, TradeHistoryItem, Account, IndicatorConfig, ContractType, PriceAlert, PendingLimitOrder } from './types';
 import { 
@@ -63,8 +64,8 @@ function initializeAssetHistory(assets: Asset[]): Record<string, Tick[]> {
     let currentPrice = asset.price;
     const tickHistory: Tick[] = [];
 
-    // Prepopulate 1500 historic ticks per index asset
-    for (let i = 1500; i >= 0; i--) {
+    // Prepopulate 6000 historic ticks per index asset to support deep historic candles across TFs
+    for (let i = 6000; i >= 0; i--) {
       const walkFactor = (Math.random() - 0.5 + asset.trendBias) * 1.5;
       currentPrice = currentPrice * (1 + walkFactor * (asset.volatility / 100));
       tickHistory.push({
@@ -127,6 +128,14 @@ export default function App() {
   const TICK_INTERVAL_MS = 1000;
   const APP_VERSION = '1.0.1';
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem('lwex_welcome_shown')) {
+      setIsWelcomeModalOpen(true);
+      localStorage.setItem('lwex_welcome_shown', 'true');
+    }
+  }, []);
 
   // Account states: Loaded from storage
   const [currentUser, setCurrentUser] = useState<any>(() => {
@@ -862,7 +871,7 @@ export default function App() {
       for (let t = lastTickTime + stepInterval; t <= maxExpiry; t += stepInterval) {
         ASSETSList.forEach(asset => {
           priceState[asset.id] = walkAsset(asset.id, priceState[asset.id], 1);
-          if (t >= now - 1500 * 1000) {
+          if (t >= now - 6000 * 1000) {
             accumulatedTicks[asset.id].push({ time: t, price: priceState[asset.id] });
           }
         });
@@ -923,9 +932,9 @@ export default function App() {
       }
     }
 
-    // Sub-Step 2: Jump the macro gap from `maxExpiry` to `now - 1500 * 1000` (if any gap exists)
+    // Sub-Step 2: Jump the macro gap from `maxExpiry` to `now - 6000 * 1000` (if any gap exists)
     const macroStart = Math.max(lastTickTime, maxExpiry);
-    const macroEnd = now - 1500 * 1000;
+    const macroEnd = now - 6000 * 1000;
     const macroGapSeconds = Math.floor((macroEnd - macroStart) / 1000);
     
     if (macroGapSeconds > 10) {
@@ -1011,7 +1020,7 @@ export default function App() {
 
     const finalTicksMap: Record<string, Tick[]> = {};
     ASSETSList.forEach(asset => {
-      finalTicksMap[asset.id] = (accumulatedTicks[asset.id] || []).slice(-1500);
+      finalTicksMap[asset.id] = (accumulatedTicks[asset.id] || []).slice(-6000);
     });
 
     localStorage.setItem(`lwex_ticks_history_${targetPartitionId}`, JSON.stringify(finalTicksMap));
@@ -1821,7 +1830,7 @@ export default function App() {
           nextPricesMap[asset.id] = nextPrice;
 
           const newTick: Tick = { time: now, price: nextPrice };
-          nextTicksMap[asset.id] = [...currentHistory.slice(-1500), newTick];
+          nextTicksMap[asset.id] = [...currentHistory.slice(-6000), newTick];
         });
 
         return nextTicksMap;
@@ -4390,6 +4399,11 @@ export default function App() {
         onClose={() => setIsAdminOpen(false)}
         theme={theme}
         triggerToast={triggerToast}
+      />
+
+      <WelcomeModal 
+        isOpen={isWelcomeModalOpen} 
+        onClose={() => setIsWelcomeModalOpen(false)} 
       />
 
       <SessionTimeoutModal

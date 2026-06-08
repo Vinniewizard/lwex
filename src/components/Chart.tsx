@@ -313,14 +313,14 @@ export default function Chart({
     };
   }, []);
 
-  // Compute Candles from Ticks for the candlestick view
-  const [candleInterval, setCandleInterval] = useState<number>(2000); // 2 seconds per candle default
+  const candleInterval = 5000; // 5 seconds per candle default
   const getCandles = (useHeikinAshi = false) => {
     if (ticks.length === 0) return [];
+    console.log(`getCandles: interval=${candleInterval}, ticks=${ticks.length}`);
     const candles: { time: number; open: number; high: number; low: number; close: number }[] = [];
     let currentCandle: any = null;
 
-    ticks.forEach((tick) => {
+    ticks.forEach((tick, i) => {
       const bucketTime = Math.floor(tick.time / candleInterval) * candleInterval;
       if (!currentCandle || currentCandle.time !== bucketTime) {
         if (currentCandle) {
@@ -343,6 +343,7 @@ export default function Chart({
     if (currentCandle) {
       candles.push(currentCandle);
     }
+    console.log(`getCandles: generated ${candles.length} candles`);
 
     if (useHeikinAshi && candles.length > 0) {
       const haCandles: any[] = [];
@@ -384,6 +385,7 @@ export default function Chart({
     emaArray,
     rsiArray,
     candles,
+    candleInterval,
   });
 
   // Keep parameters updated on every render
@@ -403,6 +405,7 @@ export default function Chart({
       emaArray,
       rsiArray,
       candles,
+      candleInterval,
     };
   }, [
     dimensions,
@@ -418,7 +421,8 @@ export default function Chart({
     smaArray,
     emaArray,
     rsiArray,
-    candles
+    candles,
+    candleInterval,
   ]);
 
   // Canvas Drawing Loop via requestAnimationFrame for butter-smooth animation
@@ -453,6 +457,7 @@ export default function Chart({
         emaArray,
         rsiArray,
         candles: visibleCandlesList,
+        candleInterval,
       } = params;
 
       if (ticks.length === 0) {
@@ -492,14 +497,15 @@ export default function Chart({
       let minPrice = Infinity;
       let maxPrice = -Infinity;
 
+      const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 1.5));
+      const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
+
       if (localChartType === 'line') {
         visibleTicks.forEach((t) => {
           minPrice = Math.min(minPrice, t.price);
           maxPrice = Math.max(maxPrice, t.price);
         });
       } else {
-        const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 1.5));
-        const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
         if (visibleCandles.length > 0) {
           visibleCandles.forEach((c) => {
             minPrice = Math.min(minPrice, c.low);
@@ -614,14 +620,17 @@ export default function Chart({
         }
         ctx.stroke();
       } else {
-        const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 1.5));
-        const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
-
         if (visibleCandles.length > 0) {
           const activeWidth = width - 75;
-          // Dynamically compute separation to fill the chart, but cap at 20px so candles are always close to each other when there are few
-          const barSeparation = Math.min(activeWidth / Math.max(visibleCandles.length - 1, 1), 20);
-          const barWidth = Math.max(Math.min(barSeparation * 0.60, 14), 4); // Perfectly proportioned width
+          // Dynamically compute separation to fill the chart, but allow larger spacing on 1s to facilitate bigger sizing
+          const maxSeparation = 45;
+          const barSeparation = Math.min(activeWidth / Math.max(visibleCandles.length - 1, 1), maxSeparation);
+          
+          // Slightly wider and larger candles for a more robust 5s look
+          const barWidthMultiplier = 0.70;
+          const maxWidthLimit = 32;
+          const minWidthLimit = 6;
+          const barWidth = Math.max(Math.min(barSeparation * barWidthMultiplier, maxWidthLimit), minWidthLimit);
 
           visibleCandles.forEach((candle, idx) => {
             // Right-aligned spacing for a professional, close-packed, high-fidelity experience
@@ -638,7 +647,7 @@ export default function Chart({
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
             
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.5; // Elegant thin wick lines
             ctx.beginPath();
             ctx.moveTo(cX, highY);
             ctx.lineTo(cX, lowY);
@@ -647,6 +656,7 @@ export default function Chart({
             const bodyY = Math.min(openY, closeY);
             const bodyH = Math.max(Math.abs(openY - closeY), 1.5);
             
+            // Draw slim crisp candle bodies
             ctx.fillRect(cX - barWidth / 2, bodyY, barWidth, bodyH);
           });
         }
@@ -979,26 +989,7 @@ export default function Chart({
             </button>
           </div>
 
-          {/* Timeframe Select Dropdown */}
-          <div className={`flex items-center space-x-1 rounded-lg border px-1.5 py-0.5 ${
-            isDark ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-100'
-          }`}>
-            <span className="text-[9px] text-slate-400 font-bold uppercase select-none">TF:</span>
-            <select
-              value={candleInterval}
-              onChange={(e) => setCandleInterval(Number(e.target.value))}
-              className={`bg-transparent text-[11px] font-black font-mono outline-none transition-all cursor-pointer ${
-                isDark 
-                  ? 'text-yellow-400' 
-                  : 'text-gray-800'
-              }`}
-            >
-              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={2000}>2s</option>
-              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={60000}>1m</option>
-              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={300000}>5m</option>
-              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={900000}>15m</option>
-            </select>
-          </div>
+          {/* Add future UI elements here */}
 
           {/* Indicators popup drawer toggle */}
           <div className="relative">
