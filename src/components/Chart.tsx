@@ -12,6 +12,7 @@ interface ChartProps {
   onToggleChartType: (type: 'line' | 'candles') => void;
   onToggleIndicator: (type: 'sma' | 'ema' | 'rsi') => void;
   onUpdateContract?: (id: string, updates: Partial<Contract>) => void;
+  onPriceClick?: (price: number) => void;
 }
 
 export default function Chart({
@@ -23,12 +24,13 @@ export default function Chart({
   chartType: initialChartType = 'line',
   onToggleChartType,
   onToggleIndicator,
-  onUpdateContract
+  onUpdateContract,
+  onPriceClick
 }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 700, height: 400 });
-  const [zoomLevel, setZoomLevel] = useState(35); // how many elements are shown
+  const [zoomLevel, setZoomLevel] = useState(16); // fewer elements -> larger candles
   const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(false);
   const [localChartType, setLocalChartType] = useState<'line' | 'candles'>(initialChartType);
 
@@ -193,6 +195,15 @@ export default function Chart({
           onUpdateContract(contract.id, { takeProfitPrice: dragY });
         }
       }
+    } else if (!draggingItem && mousePos && mousePos.x > dimensions.width - 75) {
+      if (onPriceClick) {
+        const { adjustedMin, adjustedPriceRange, mainChartHeight } = scaleMetricsRef.current;
+        if (mousePos.y <= mainChartHeight && mainChartHeight > 40) {
+          const fraction = (mainChartHeight - mousePos.y - 20) / (mainChartHeight - 40);
+          const clickedPrice = adjustedMin + adjustedPriceRange * fraction;
+          onPriceClick(clickedPrice);
+        }
+      }
     }
     setDraggingItem(null);
     setDragY(null);
@@ -286,13 +297,13 @@ export default function Chart({
 
     const handleWheelZoom = (e: WheelEvent) => {
       e.preventDefault();
-      const zoomStep = 5;
+      const zoomStep = 4;
       if (e.deltaY < 0) {
         // Scroll Up -> Zoom In (Fewer ticks shown, closer view)
-        setZoomLevel((prev) => Math.max(prev - zoomStep, 15));
+        setZoomLevel((prev) => Math.max(prev - zoomStep, 8));
       } else {
         // Scroll Down -> Zoom Out (More ticks shown, wider context)
-        setZoomLevel((prev) => Math.min(prev + zoomStep, 200));
+        setZoomLevel((prev) => Math.min(prev + zoomStep, 120));
       }
     };
 
@@ -303,7 +314,7 @@ export default function Chart({
   }, []);
 
   // Compute Candles from Ticks for the candlestick view
-  const candleInterval = 2000; // 2 seconds per candle
+  const [candleInterval, setCandleInterval] = useState<number>(2000); // 2 seconds per candle default
   const getCandles = (useHeikinAshi = false) => {
     if (ticks.length === 0) return [];
     const candles: { time: number; open: number; high: number; low: number; close: number }[] = [];
@@ -355,7 +366,7 @@ export default function Chart({
   // Memoize candles to prevent recalculation on every mouse move or loop tick
   const candles = React.useMemo(() => {
     return getCandles();
-  }, [ticks]);
+  }, [ticks, candleInterval]);
 
   // Track parameters for high performance requestAnimationFrame loop
   const drawParamsRef = useRef({
@@ -480,10 +491,35 @@ export default function Chart({
       // Find Price Bounds for rendering fitting
       let minPrice = Infinity;
       let maxPrice = -Infinity;
-      visibleTicks.forEach((t) => {
-        minPrice = Math.min(minPrice, t.price);
-        maxPrice = Math.max(maxPrice, t.price);
-      });
+
+      if (localChartType === 'line') {
+        visibleTicks.forEach((t) => {
+          minPrice = Math.min(minPrice, t.price);
+          maxPrice = Math.max(maxPrice, t.price);
+        });
+      } else {
+        const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 1.5));
+        const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
+        if (visibleCandles.length > 0) {
+          visibleCandles.forEach((c) => {
+            let highVal = c.high;
+            let lowVal = c.low;
+            if (candleInterval === 2000) {
+              const mid = (c.open + c.close) / 2;
+              const scale = 3.5;
+              highVal = mid + (c.high - mid) * scale;
+              lowVal = mid + (c.low - mid) * scale;
+            }
+            minPrice = Math.min(minPrice, lowVal);
+            maxPrice = Math.max(maxPrice, highVal);
+          });
+        } else {
+          visibleTicks.forEach((t) => {
+            minPrice = Math.min(minPrice, t.price);
+            maxPrice = Math.max(maxPrice, t.price);
+          });
+        }
+      }
 
       // Merge barrier prices from active contracts to keep them in viewport
       activeContracts.forEach((contract) => {
@@ -513,12 +549,13 @@ export default function Chart({
       };
 
       // Draw Minimal Grid Coordinates
-      const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)';
+      const gridColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)';
       const textColor = isDark ? '#52525b' : '#94a3b8';
 
       ctx.strokeStyle = gridColor;
       ctx.lineWidth = 1;
-      ctx.font = '9px monospace';
+      ctx.setLineDash([2, 2]); // Dotted grid
+      ctx.font = '10px sans-serif';
       ctx.fillStyle = textColor;
 
       // Horizontal pricing lines
@@ -534,6 +571,25 @@ export default function Chart({
 
         ctx.fillText(priceVal?.toFixed(asset.decimals) ?? '0.00', width - 70, gridY + 3);
       }
+
+      // Vertical time lines
+      const timeLinesCount = 6;
+      for (let i = 0; i < timeLinesCount; i++) {
+        const gridX = getX(i * Math.floor((visibleTicks.length - 1) / (timeLinesCount - 1)), visibleTicks.length);
+        
+        ctx.beginPath();
+        ctx.moveTo(gridX, 0);
+        ctx.lineTo(gridX, mainChartHeight);
+        ctx.stroke();
+
+        const tickIdx = Math.floor(i * (visibleTicks.length - 1) / (timeLinesCount - 1));
+        if (visibleTicks[tickIdx]) {
+           const timeLabel = new Date(visibleTicks[tickIdx].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+           ctx.fillText(timeLabel, gridX + 5, mainChartHeight - 5);
+        }
+      }
+
+      ctx.setLineDash([]); // Reset line dash
 
       // --- DRAW PRICE TRENDS ---
       if (localChartType === 'line') {
@@ -564,46 +620,67 @@ export default function Chart({
         }
         ctx.stroke();
       } else {
-        const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 2));
+        const visibleCandlesCount = Math.min(visibleCandlesList.length, Math.floor(zoomLevel / 1.5));
         const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
 
         if (visibleCandles.length > 0) {
           const activeWidth = width - 75;
-          const barSeparation = activeWidth / visibleCandles.length;
-          const barWidth = Math.max(barSeparation * 0.7, 4);
+          let barSeparation = activeWidth / Math.max(visibleCandles.length - 1, 1);
+          
+          const isHighTF = candleInterval >= 60000;
+          if (isHighTF) {
+            // Cap horizontal separation at 20px so candles are drawn close to each other
+            barSeparation = Math.min(barSeparation, 20);
+          }
+
+          const barWidth = Math.max(Math.min(barSeparation * 0.45, 12), 4); // Perfectly proportioned width
 
           visibleCandles.forEach((candle, idx) => {
-            const cX = (idx / (visibleCandles.length - 1)) * activeWidth + 10;
-            const openY = getY(candle.open);
-            const closeY = getY(candle.close);
-            const highY = getY(candle.high);
-            const lowY = getY(candle.low);
+            let cX;
+            if (isHighTF) {
+              // Right-aligned spacing for a professional close-packed fit when few candles exist
+              const offsetFromRight = (visibleCandles.length - 1 - idx) * barSeparation;
+              cX = (activeWidth + 10) - offsetFromRight;
+            } else {
+              // Standard wide left-to-right filling layout for TF 2s
+              cX = (idx / Math.max(visibleCandles.length - 1, 1)) * activeWidth + 10;
+            }
+
+            // Apply scale factor if TF is 2s (candleInterval === 2000) to make it larger in height (vertical size)
+            let openVal = candle.open;
+            let closeVal = candle.close;
+            let highVal = candle.high;
+            let lowVal = candle.low;
+
+            if (candleInterval === 2000) {
+              const mid = (candle.open + candle.close) / 2;
+              const scale = 3.5; // Stretch vertically by 3.5x to highlight price movements
+              openVal = mid + (candle.open - mid) * scale;
+              closeVal = mid + (candle.close - mid) * scale;
+              highVal = mid + (candle.high - mid) * scale;
+              lowVal = mid + (candle.low - mid) * scale;
+            }
+
+            const openY = getY(openVal);
+            const closeY = getY(closeVal);
+            const highY = getY(highVal);
+            const lowY = getY(lowVal);
 
             const isBull = candle.close >= candle.open;
-            const color = isBull ? '#2dd4bf' : '#fb7185';
+            const color = isBull ? '#089981' : '#f23645';
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
             
-            // Glow effect for candles
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = color;
-
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(cX, highY);
             ctx.lineTo(cX, lowY);
             ctx.stroke();
 
-            ctx.shadowBlur = 0; // reset for body
-
             const bodyY = Math.min(openY, closeY);
             const bodyH = Math.max(Math.abs(openY - closeY), 1.5);
             
-            if (isBull) {
-               ctx.strokeRect(cX - barWidth / 2, bodyY, barWidth, bodyH);
-            } else {
-               ctx.fillRect(cX - barWidth / 2, bodyY, barWidth, bodyH);
-            }
+            ctx.fillRect(cX - barWidth / 2, bodyY, barWidth, bodyH);
           });
         }
       }
@@ -788,33 +865,8 @@ export default function Chart({
         if (visibleIndex >= 0 && visibleIndex < visibleTicks.length) {
           const x = getX(visibleIndex, visibleTicks.length);
           const y = getY(ticks[hoveredIndex].price);
-
-          ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(15, 23, 42, 0.15)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([5, 5]);
-
-          // Vertical lines through chart and optionally RSI panel
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, showRSI ? height : mainChartHeight);
-          ctx.stroke();
-
-          // Horizontal line tracking exact mouse position
-          ctx.beginPath();
-          ctx.moveTo(0, mousePos.y);
-          ctx.lineTo(width - 75, mousePos.y);
-          ctx.stroke();
-
-          ctx.setLineDash([]); // Reset line dash
-
-          // Draw dot on the price path
-          ctx.beginPath();
-          ctx.arc(x, y, 4.5, 0, Math.PI * 2);
-          ctx.fillStyle = '#a855f7'; // Primary Purple
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.fill();
-          ctx.stroke();
+          
+          // Hover trackers removed as requested for a cleaner chart
         }
       }
 
@@ -886,11 +938,11 @@ export default function Chart({
 
   // Handle Zoom Operations safely
   const handleZoomIn = () => {
-    setZoomLevel((prev) => Math.max(prev - 5, 15));
+    setZoomLevel((prev) => Math.max(prev - 4, 8));
   };
 
   const handleZoomOut = () => {
-    setZoomLevel((prev) => Math.min(prev + 5, 200));
+    setZoomLevel((prev) => Math.min(prev + 4, 120));
   };
 
   const handleToggleLocalChartType = (type: 'line' | 'candles') => {
@@ -958,6 +1010,27 @@ export default function Chart({
             >
               <BarChart2 className="h-3.5 w-3.5 rotate-90" />
             </button>
+          </div>
+
+          {/* Timeframe Select Dropdown */}
+          <div className={`flex items-center space-x-1 rounded-lg border px-1.5 py-0.5 ${
+            isDark ? 'bg-slate-950 border-slate-800' : 'bg-gray-50 border-gray-100'
+          }`}>
+            <span className="text-[9px] text-slate-400 font-bold uppercase select-none">TF:</span>
+            <select
+              value={candleInterval}
+              onChange={(e) => setCandleInterval(Number(e.target.value))}
+              className={`bg-transparent text-[11px] font-black font-mono outline-none transition-all cursor-pointer ${
+                isDark 
+                  ? 'text-yellow-400' 
+                  : 'text-gray-800'
+              }`}
+            >
+              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={2000}>2s</option>
+              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={60000}>1m</option>
+              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={300000}>5m</option>
+              <option className={isDark ? "bg-slate-950 text-white" : "bg-white text-black"} value={900000}>15m</option>
+            </select>
           </div>
 
           {/* Indicators popup drawer toggle */}
@@ -1118,108 +1191,6 @@ export default function Chart({
           onMouseUp={handleMouseUp}
           style={{ width: '100%', height: '100%', display: 'block', cursor: draggingItem || hoverLine ? 'ns-resize' : 'crosshair' }}
         />
-
-        {/* Synchronized floating cursor crosshair label */}
-        {hoveredIndex !== null && mousePos && ticks[hoveredIndex] && (() => {
-          const { adjustedMin, adjustedPriceRange, mainChartHeight } = scaleMetricsRef.current;
-          let hoverPriceCursor = ticks[hoveredIndex].price;
-          if (mousePos.y <= mainChartHeight && mainChartHeight > 40) {
-            const fraction = (mainChartHeight - mousePos.y - 20) / (mainChartHeight - 40);
-            hoverPriceCursor = adjustedMin + adjustedPriceRange * fraction;
-          }
-          return (
-            <div
-              className={`absolute pointer-events-none rounded-md px-2 py-1 text-[10px] uppercase font-mono border shadow-md font-bold z-50 flex flex-col space-y-0.5 whitespace-nowrap leading-none ${
-                isDark
-                  ? 'border-violet-500 bg-slate-900 border-opacity-40 text-violet-300 shadow-slate-950/50'
-                  : 'border-indigo-200 bg-white/95 text-indigo-700 shadow-slate-200/40'
-              }`}
-              style={{
-                left: `${Math.min(mousePos.x + 15, dimensions.width - 150)}px`,
-                top: `${Math.min(mousePos.y - 45, dimensions.height - 45)}px`,
-              }}
-            >
-              <div className="flex items-center space-x-1.5">
-                <span className="text-gray-400">PRICE:</span>
-                <span className={isDark ? "text-violet-400" : "text-indigo-600"}>${hoverPriceCursor?.toFixed(asset.decimals) ?? '0.00'}</span>
-              </div>
-              <div className="flex items-center space-x-1.5 text-[9px] opacity-85">
-                <span className="text-gray-400">TIME:</span>
-                <span>{new Date(ticks[hoveredIndex].time).toLocaleTimeString()}</span>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Dynamic Tooltip Overlay */}
-        {hoveredIndex !== null && mousePos && ticks[hoveredIndex] && (
-          <div
-            id="chart-indicators-tooltip"
-            className={`absolute pointer-events-none rounded-lg border p-3 text-xs shadow-xl backdrop-blur-md transition-all duration-75 z-40 w-52 font-mono ${
-              isDark 
-                ? 'border-slate-800 bg-slate-950/95 text-slate-100 shadow-slate-950/50' 
-                : 'border-gray-200 bg-white/95 text-slate-800 shadow-gray-200/50'
-            }`}
-            style={{
-              left: `${Math.min(mousePos.x + 15, dimensions.width - 225)}px`,
-              top: `${Math.min(mousePos.y + 15, dimensions.height - 165)}px`,
-            }}
-          >
-            <div className="font-bold border-b pb-1 mb-1.5 flex justify-between items-center">
-              <span>{asset.symbol} Stats</span>
-              <span className="text-[10px] text-gray-400 font-normal">
-                {new Date(ticks[hoveredIndex].time).toLocaleTimeString()}
-              </span>
-            </div>
-            <div className="space-y-1">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Price:</span>
-                <span className="font-bold">
-                  ${ticks[hoveredIndex]?.price?.toFixed(asset.decimals) ?? '0.00'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="flex items-center space-x-1">
-                  <span className={`h-1.5 w-1.5 rounded-full ${indicatorConfig.sma.enabled ? 'bg-sky-400' : 'bg-gray-400/50'}`} />
-                  <span className={indicatorConfig.sma.enabled ? 'text-sky-400 font-medium' : 'text-gray-500'}>
-                    SMA ({smaPeriod}):
-                  </span>
-                </span>
-                <span className={indicatorConfig.sma.enabled ? 'text-sky-400 font-bold' : 'text-gray-400'}>
-                  {smaArray[hoveredIndex] !== null && smaArray[hoveredIndex] !== undefined
-                    ? smaArray[hoveredIndex]?.toFixed(asset.decimals) ?? '0.00'
-                    : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="flex items-center space-x-1">
-                  <span className={`h-1.5 w-1.5 rounded-full ${indicatorConfig.ema.enabled ? 'bg-orange-400' : 'bg-gray-400/50'}`} />
-                  <span className={indicatorConfig.ema.enabled ? 'text-orange-400 font-medium' : 'text-gray-500'}>
-                    EMA ({emaPeriod}):
-                  </span>
-                </span>
-                <span className={indicatorConfig.ema.enabled ? 'text-orange-400 font-bold' : 'text-gray-400'}>
-                  {emaArray[hoveredIndex] !== null && emaArray[hoveredIndex] !== undefined
-                    ? emaArray[hoveredIndex]?.toFixed(asset.decimals) ?? '0.00'
-                    : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="flex items-center space-x-1">
-                  <span className={`h-1.5 w-1.5 rounded-full ${indicatorConfig.rsi.enabled ? 'bg-purple-400' : 'bg-gray-400/50'}`} />
-                  <span className={indicatorConfig.rsi.enabled ? 'text-purple-400 font-medium' : 'text-gray-500'}>
-                    RSI ({rsiPeriod}):
-                  </span>
-                </span>
-                <span className={indicatorConfig.rsi.enabled ? 'text-purple-400 font-bold' : 'text-gray-400'}>
-                  {rsiArray[hoveredIndex] !== null && rsiArray[hoveredIndex] !== undefined
-                    ? rsiArray[hoveredIndex]?.toFixed(2) ?? '0.00'
-                    : '—'}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Empty State Guard */}
         {ticks.length === 0 && (

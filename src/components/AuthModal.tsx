@@ -312,18 +312,18 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
                 </div>
               )}
 
-              {/* Email Field - Used in login, register, forgot_password */}
+              {/* Email/Phone Field - Used in login, register, forgot_password */}
               {view !== 'reset_password' && (
                 <div className="space-y-1">
                   <label className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    Email Address
+                    {view === 'login' ? 'Email or Phone' : 'Email Address'}
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Mail className={`h-4.5 w-4.5 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`} />
                     </div>
                     <input
-                      type="email"
+                      type={view === 'login' ? 'text' : 'email'}
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -332,7 +332,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
                           ? 'bg-zinc-950 border-zinc-800 text-white focus:border-yellow-500' 
                           : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-yellow-500'
                       } border`}
-                      placeholder="you@example.com"
+                      placeholder={view === 'login' ? "you@example.com or +123456789" : "you@example.com"}
                     />
                   </div>
                 </div>

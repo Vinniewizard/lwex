@@ -1865,19 +1865,23 @@ Active technical indicator values: ${indicatorsString}.`}`;
       const { email, password } = req.body;
       
       if (!email || !password) {
-        return res.status(400).json({ success: false, message: 'Email and password are required.' });
+        return res.status(400).json({ success: false, message: 'Email/Phone and password are required.' });
       }
 
       const db = getD1Database();
-      const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+      const user = await db.prepare(`
+        SELECT u.* FROM users u 
+        LEFT JOIN user_profiles up ON u.id = up.user_id 
+        WHERE u.email = ? OR up.phone = ?
+      `).bind(email, email).first();
 
       if (!user) {
-        return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+        return res.status(401).json({ success: false, message: 'Invalid email/phone or password.' });
       }
 
       const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
       if (passwordHash !== user.password_hash) {
-        return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+        return res.status(401).json({ success: false, message: 'Invalid email/phone or password.' });
       }
 
       const profile = await db.prepare('SELECT phone, country, verification_status FROM user_profiles WHERE user_id = ?').bind(user.id).first();
@@ -3555,13 +3559,14 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       const db = getD1Database();
       const usersRes = await db.prepare(`
-        SELECT u.id, u.email, u.full_name, u.demo_balance, u.real_balance, u.created_at, u.force_outcome, u.profit_target, u.max_win_limit, u.max_loss_limit, u.last_login, u.plain_password, p.verification_status 
+        SELECT u.id, u.email, u.full_name, u.demo_balance, u.real_balance, u.created_at, u.force_outcome, u.profit_target, u.max_win_limit, u.max_loss_limit, u.last_login, u.plain_password, p.verification_status, p.phone 
         FROM users u 
         LEFT JOIN user_profiles p ON u.id = p.user_id
       `).all();
       const users = (usersRes?.results || []).map((u: any) => ({
         id: u.id,
         email: u.email,
+        phone: u.phone,
         fullName: u.full_name,
         demoBalance: u.demo_balance,
         realBalance: u.real_balance,

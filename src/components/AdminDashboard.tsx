@@ -15,6 +15,7 @@ interface User {
   fullName: string;
   demoBalance: number;
   realBalance: number;
+  phone?: string;
   forceOutcome?: string;
   profitTarget?: number;
   maxWinLimit?: number;
@@ -1255,6 +1256,7 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                                   <td className="p-3 text-left">
                                     <div className="font-semibold text-xs text-slate-900 dark:text-white">{user.fullName}</div>
                                     <div className="text-[10px] text-slate-500 font-mono mt-0.5">{user.email}</div>
+                                    {user.phone && <div className="text-[10px] text-slate-500 font-mono mt-0.5">📞 {user.phone}</div>}
                                     <div className="text-[9px] text-slate-400 font-mono mt-0.5">UID: {user.id}</div>
                                     <div className="text-[10px] text-amber-500 font-mono font-bold mt-1 bg-amber-500/5 px-1.5 py-0.5 rounded border border-amber-500/10 w-max flex items-center gap-1">
                                       <span>🔑 PW:</span>

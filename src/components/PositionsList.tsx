@@ -61,6 +61,14 @@ export default function PositionsList({
   const winRate = totalTrades > 0 ? (winningTrades / (totalTrades - soldTrades || totalTrades)) * 100 : 0;
   const netEarnings = closedContracts.reduce((sum, item) => sum + item.profit, 0);
 
+  // New calculations for Trading Efficiency (30D)
+  const avgProfitPerTrade = totalTrades > 0 ? netEarnings / totalTrades : 0;
+  
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const volumeLast30Days = closedContracts
+    .filter(c => c.purchaseTime > thirtyDaysAgo)
+    .reduce((sum, item) => sum + item.stake, 0);
+
   return (
     <div className={`flex flex-col rounded-xl border overflow-hidden shadow-sm flex-1 transition-colors ${
       isDark ? 'border-slate-800 bg-slate-900/50 backdrop-blur-md text-white' : 'border-gray-200/60 bg-white text-black'
@@ -500,6 +508,38 @@ export default function PositionsList({
                 </div>
               </div>
             )}
+
+            {/* Trading Efficiency Box */}
+            <div className={`p-4 rounded-xl border space-y-4 ${
+              isDark ? 'border-zinc-800 bg-zinc-900/40' : 'border-gray-150 bg-white'
+            }`}>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider">Trading Efficiency (30D)</h4>
+                  <p className="text-[10px] text-gray-500">Historical performance efficiency metrics</p>
+                </div>
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded font-black font-mono">
+                  ACTIVE
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                  <span className="block text-[8px] text-slate-400 font-bold uppercase">Win Rate</span>
+                  <span className="block text-xs font-black font-mono text-emerald-400 mt-0.5">{winRate.toFixed(1)}%</span>
+                </div>
+                <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                  <span className="block text-[8px] text-slate-400 font-bold uppercase">Avg Profit</span>
+                  <span className={`block text-xs font-black font-mono mt-0.5 ${avgProfitPerTrade >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {avgProfitPerTrade >= 0 ? '+' : ''}${avgProfitPerTrade.toFixed(2)}
+                  </span>
+                </div>
+                <div className={`p-2.5 rounded-lg border text-center ${isDark ? 'bg-zinc-900/20 border-zinc-805/30' : 'bg-gray-50 border-gray-100'}`}>
+                  <span className="block text-[8px] text-slate-400 font-bold uppercase">Volume</span>
+                  <span className="block text-xs font-black font-mono text-blue-400 mt-0.5">${volumeLast30Days.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
 
             {/* Asset Allocations & Portfolio Distribution Box */}
             <div className={`p-4 rounded-xl border space-y-4 ${

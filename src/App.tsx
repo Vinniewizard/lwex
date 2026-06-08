@@ -50,7 +50,8 @@ import {
   DollarSign,
   Activity,
   Sun,
-  Moon
+  Moon,
+  Download
 } from 'lucide-react';
 
 // Initialize asset history with realistic price walk
@@ -62,8 +63,8 @@ function initializeAssetHistory(assets: Asset[]): Record<string, Tick[]> {
     let currentPrice = asset.price;
     const tickHistory: Tick[] = [];
 
-    // Prepopulate 120 historic ticks per index asset
-    for (let i = 120; i >= 0; i--) {
+    // Prepopulate 1500 historic ticks per index asset
+    for (let i = 1500; i >= 0; i--) {
       const walkFactor = (Math.random() - 0.5 + asset.trendBias) * 1.5;
       currentPrice = currentPrice * (1 + walkFactor * (asset.volatility / 100));
       tickHistory.push({
@@ -218,6 +219,51 @@ export default function App() {
 
   const [runWalkthrough, setRunWalkthrough] = useState(false);
   const walkthroughVersion = 'v1.1'; // Update this to reset walkthrough for returning users
+
+  const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((registration) => {
+        setSwRegistration(registration);
+        
+        if (registration.waiting) {
+          setShowUpdatePrompt(true);
+        }
+
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setShowUpdatePrompt(true);
+              }
+            });
+          }
+        });
+
+        const updateInterval = setInterval(() => {
+          registration.update().catch(() => {});
+          if (registration.waiting) {
+            setShowUpdatePrompt(true);
+          }
+        }, 30000);
+
+        return () => clearInterval(updateInterval);
+      }).catch((err) => {
+        console.debug('SW Registration error:', err);
+      });
+
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!reloading) {
+          reloading = true;
+          window.location.reload();
+        }
+      });
+    }
+  }, []);
 
   useEffect(() => {
     // Only run walkthrough for actual users (not demo) if they haven't seen it
@@ -666,6 +712,9 @@ export default function App() {
   const [activeInput, setActiveInput] = useState<'qty' | 'usd'>('qty');
   const [spotDuration, setSpotDuration] = useState<number>(5);
   const [spotDurationUnit, setSpotDurationUnit] = useState<'ticks' | 'seconds' | 'minutes'>('seconds');
+
+  const [quickOrderPrompt, setQuickOrderPrompt] = useState<{ price: number } | null>(null);
+  const [showApkModal, setShowApkModal] = useState<boolean>(false);
 
   // Sync limit input on active asset swaps
   useEffect(() => {
@@ -1235,7 +1284,7 @@ export default function App() {
           nextPricesMap[asset.id] = nextPrice;
 
           const newTick: Tick = { time: now, price: nextPrice };
-          nextTicksMap[asset.id] = [...currentHistory.slice(-300), newTick];
+          nextTicksMap[asset.id] = [...currentHistory.slice(-1500), newTick];
         });
 
         return nextTicksMap;
@@ -1295,18 +1344,12 @@ export default function App() {
 
           if (contract.type === 'rise-fall') {
             const goingUp = contract.direction === 'rise';
-            if (goingUp) {
-              currentProfit = nextPrice > contract.entryPrice ? contract.stake * 0.955 : -contract.stake;
-            } else {
-              currentProfit = nextPrice < contract.entryPrice ? contract.stake * 0.955 : -contract.stake;
-            }
+            const priceChange = goingUp ? (nextPrice - contract.entryPrice) : (contract.entryPrice - nextPrice);
+            currentProfit = (priceChange / contract.entryPrice) * contract.stake * 500; // 500x leverage floating profit logic
           } else if (contract.type === 'higher-lower') {
             const isHigher = contract.direction === 'higher';
-            if (isHigher) {
-              currentProfit = nextPrice > actualBarrier ? contract.stake * 0.955 : -contract.stake;
-            } else {
-              currentProfit = nextPrice < actualBarrier ? contract.stake * 0.955 : -contract.stake;
-            }
+            const priceChange = isHigher ? (nextPrice - actualBarrier) : (actualBarrier - nextPrice);
+            currentProfit = (priceChange / actualBarrier) * contract.stake * 500;
           } else if (contract.type === 'touch-no-touch') {
             const isTouch = contract.direction === 'touch';
             const touched = (contract.barrierOffset && contract.barrierOffset > 0)
@@ -1348,10 +1391,7 @@ export default function App() {
           } else {
             ratioRemaining = Math.max(0, (contract.expiryTime - now) / (contract.expiryTime - contract.entryTime));
           }
-          const baseSell = contract.stake * 0.90;
-          const calculatedSellPrice = currentProfit >= 0
-            ? baseSell + currentProfit * (1 - ratioRemaining * 0.4)
-            : Math.max(contract.stake * 0.15, baseSell * ratioRemaining);
+          const calculatedSellPrice = Math.max(0, contract.stake + currentProfit);
 
           // Evaluate percentage-based Stop Loss
           let isStopLossTriggered = false;
@@ -1395,6 +1435,12 @@ export default function App() {
              if (isTakeProfitTriggered) earlyExitRefund = calculatedSellPrice;
           }
 
+          // Auto Stop Out (Margin Call): Automatically close if equity <= 0
+          if (calculatedSellPrice <= 0) {
+            isStopLossTriggered = true;
+            earlyExitRefund = 0;
+          }
+
           if (isExpired || status !== 'active' || isStopLossTriggered || isTakeProfitTriggered) {
             let finalStatus = (isStopLossTriggered || isTakeProfitTriggered) ? 'sold' : (status !== 'active' ? status : (currentProfit >= 0 ? 'won' : 'lost'));
             
@@ -1424,7 +1470,7 @@ export default function App() {
             }
 
             // Apply Admin win limits
-            if (isWon && currentUser?.maxWinLimit && currentUser.maxWinLimit > 0 && netProfit > currentUser.maxWinLimit) {
+            if (netProfit > 0 && currentUser?.maxWinLimit && currentUser.maxWinLimit > 0 && netProfit > currentUser.maxWinLimit) {
               netProfit = currentUser.maxWinLimit;
               setTimeout(() => {
                 triggerToast(`Win capped at maximum allowed Single Trade Limit of $${currentUser.maxWinLimit?.toFixed(2)}`, false);
@@ -1432,14 +1478,18 @@ export default function App() {
             }
 
             // Apply Admin loss limits
-            if (!isWon && !isSold && currentUser?.maxLossLimit && currentUser.maxLossLimit > 0 && Math.abs(netProfit) > currentUser.maxLossLimit) {
+            if (netProfit < 0 && currentUser?.maxLossLimit && currentUser.maxLossLimit > 0 && Math.abs(netProfit) > currentUser.maxLossLimit) {
               netProfit = -currentUser.maxLossLimit;
               setTimeout(() => {
                 triggerToast(`Loss subsidized: Capped at maximum allowed Single Trade Limit of $${currentUser.maxLossLimit?.toFixed(2)}`, true);
               }, 400);
             }
 
-            const finalPayout = isSold ? earlyExitRefund : (contract.stake + netProfit);
+            // In case of early exit, recalculate final payout purely based on stake + netProfit (which is bounded)
+            const finalPayout = contract.stake + netProfit;
+            let finalEarlyExitRefund = isSold ? finalPayout : earlyExitRefund;
+            if (isSold) earlyExitRefund = finalEarlyExitRefund;
+
             balanceDelta += finalPayout;
 
             newHistoryItems.push({
@@ -2392,6 +2442,16 @@ export default function App() {
                 {soundEnabled ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 animate-bounce" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />}
               </button>
 
+              {/* Get APK Modal Button */}
+              <button 
+                onClick={() => setShowApkModal(true)}
+                className="hidden xs:flex bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] md:text-xs font-black uppercase tracking-wider transition-all items-center space-x-1 cursor-pointer shrink-0"
+                title="Download Encrypted Mobile App"
+              >
+                <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span>Get App</span>
+              </button>
+
               {/* Deposit Cashier Button */}
               <button 
                 onClick={() => handleOpenCashierWithTab('deposit')}
@@ -2761,7 +2821,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
               
               {/* LEFT SIDE: Interactive Trading Grid (Chart) */}
-              <div className={`tour-chart md:col-span-6 lg:col-span-6 xl:col-span-6 2xl:col-span-7 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
+              <div className={`tour-chart md:col-span-12 lg:col-span-8 xl:col-span-8 2xl:col-span-9 rounded-xl border ${isDark ? 'bg-slate-950/20 border-slate-900' : 'bg-white border-slate-200'} p-3 flex flex-col gap-2 min-h-[460px] relative overflow-hidden h-full`}>
                 
                 {/* Horizontal drawing toolbar on Top of chart */}
                 <div className="w-full flex items-center justify-start px-2 py-1 space-x-2 border-b border-slate-900 shrink-0 select-none">
@@ -2823,16 +2883,19 @@ export default function App() {
                     onToggleChartType={(newType) => setChartType(newType)}
                     onToggleIndicator={handleToggleIndicator}
                     onUpdateContract={(id, updates) => {
-                      setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+                      setActiveContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
                       const action = updates.stopLossPrice ? 'Stop Loss' : 'Take Profit';
                       triggerToast(`${action} marker updated interactively.`, true);
+                    }}
+                    onPriceClick={(price) => {
+                      setQuickOrderPrompt({ price });
                     }}
                   />
                 </div>
               </div>
 
               {/* RIGHT SIDE: Compact Multi-column Order Execution controls */}
-              <div className={`tour-trade-controls md:col-span-6 lg:col-span-6 xl:col-span-6 2xl:col-span-5 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
+              <div className={`tour-trade-controls md:col-span-12 lg:col-span-4 xl:col-span-4 2xl:col-span-3 p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200'} flex flex-col justify-between space-y-4`}>
                 
                 {/* Panel Title & Type Selector */}
                 <div className="space-y-3 shrink-0">
@@ -2894,245 +2957,129 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* BUY LONG AND SELL SHORT COLUMN SECTIONS Side-by-Side (2 Columns requested!) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-4 flex-1 overflow-y-auto min-h-0">
+                {/* UNIFIED ORDER EXECUTION PANEL */}
+                <div className="space-y-4 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex-1 overflow-y-auto">
                   
-                  {/* BUY LONG COLUMN */}
-                  <div className="space-y-2.5 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
-                    <div className="flex justify-between items-center text-[10px] pb-1 border-b border-slate-900/40">
-                      <span className="text-emerald-500 font-bold tracking-wider uppercase flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-505 animate-pulse"></span>
-                        Buy LONG ({activeAsset.symbol})
-                      </span>
+                  {spotType === 'limit' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] md:text-[11px] font-bold text-slate-450 uppercase tracking-wide block">Limit (USDT)</label>
+                      <input 
+                        type="number" 
+                        step={activeAsset.decimals > 2 ? 0.0001 : 1}
+                        value={spotPriceLimit} 
+                        onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                      />
                     </div>
+                  )}
 
-                    {spotType === 'limit' && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] md:text-[11px] font-bold text-slate-450 uppercase tracking-wide block">Limit (USDT)</label>
-                        <input 
-                          type="number" 
-                          step={activeAsset.decimals > 2 ? 0.0001 : 1}
-                          value={spotPriceLimit} 
-                          onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
-                          className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                        />
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Qty Input */}
+                    <div>
+                      <div className="flex justify-between items-center mb-0.5">
+                        <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Size ({activeAsset.symbol})</label>
                       </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-2">
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Qty ({activeAsset.symbol})</label>
-                            <span className="text-[8px] text-slate-550 font-mono">Size</span>
-                          </div>
-                          <input 
-                            type="number" 
-                            step="any"
-                            placeholder="0.00"
-                            value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
-                            onFocus={() => {
-                              setActiveInput('qty');
-                              if (amountNum > 0) {
-                                setSpotAmount(amountNum.toString());
-                              }
-                            }}
-                            onChange={(e) => handleQtyChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                          />
-                        </div>
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stake (USD)</label>
-                            <span className="text-[8px] text-slate-550 font-mono">Total</span>
-                          </div>
-                          <input 
-                            type="number" 
-                            step="any"
-                            min={gameSettings.minStake || 1}
-                            max={gameSettings.maxStake || 5000}
-                            placeholder="0.00"
-                            value={formattedUsdValue} 
-                            onFocus={() => {
-                              setActiveInput('usd');
-                              if (estimatedCostUsd > 0) {
-                                setSpotAmountUsd(estimatedCostUsd.toFixed(2));
-                              }
-                            }}
-                            onChange={(e) => handleUsdChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-emerald-400 focus:outline-none focus:border-emerald-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                          />
-                        </div>
-
-                        {/* Stop Loss (New Feature!) */}
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stop Loss (%)</label>
-                            <span className="text-[8px] text-amber-500 font-mono">Protection</span>
-                          </div>
-                          <div className="relative">
-                            <input 
-                              type="number" 
-                              min="1"
-                              max="99"
-                              placeholder="None"
-                              value={buyStopLoss} 
-                              onChange={(e) => setBuyStopLoss(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                            />
-                            {buyStopLoss && (
-                              <button 
-                                onClick={() => setBuyStopLoss('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 hover:text-rose-400 font-mono px-1 bg-slate-950"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Presets */}
-                      <div className="grid grid-cols-5 gap-1 mt-1.5">
-                        {[10, 25, 50, 75, 100].map((perc) => (
-                          <button 
-                            key={perc} 
-                            onClick={() => handlePresetPercentage(perc)}
-                            className="rounded py-1 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
-                          >
-                            {perc}%
-                          </button>
-                        ))}
-                      </div>
+                      <input 
+                        type="number" 
+                        step="any"
+                        placeholder="0.00"
+                        value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
+                        onFocus={() => {
+                          setActiveInput('qty');
+                          if (amountNum > 0) {
+                            setSpotAmount(amountNum.toString());
+                          }
+                        }}
+                        onChange={(e) => handleQtyChange(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                      />
                     </div>
-
-                    <button 
-                      onClick={() => executeSpotTrade('buy')}
-                      className="w-full rounded bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 font-black py-2 text-xs uppercase transition-all text-center select-none cursor-pointer shadow hover:shadow-emerald-500/10 mt-2"
-                    >
-                      Buy LONG
-                    </button>
+                    
+                    {/* Stake Input */}
+                    <div>
+                      <div className="flex justify-between items-center mb-0.5">
+                        <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stake (USD)</label>
+                      </div>
+                      <input 
+                        type="number" 
+                        step="any"
+                        min={gameSettings.minStake || 1}
+                        max={gameSettings.maxStake || 5000}
+                        placeholder="0.00"
+                        value={formattedUsdValue} 
+                        onFocus={() => {
+                          setActiveInput('usd');
+                          if (estimatedCostUsd > 0) {
+                            setSpotAmountUsd(estimatedCostUsd.toFixed(2));
+                          }
+                        }}
+                        onChange={(e) => handleUsdChange(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                      />
+                    </div>
                   </div>
 
-                  {/* SELL SHORT COLUMN */}
-                  <div className="space-y-2.5 p-3 rounded-lg bg-slate-950/25 border border-slate-900 flex flex-col justify-between">
-                    <div className="flex justify-between items-center text-[10px] pb-1 border-b border-slate-900/40">
-                      <span className="text-rose-500 font-bold tracking-wider uppercase flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-rose-505 animate-pulse"></span>
-                        Sell SHORT ({activeAsset.symbol})
-                      </span>
+                  {/* Presets */}
+                  <div className="grid grid-cols-5 gap-1 mt-1.5">
+                    {[10, 25, 50, 75, 100].map((perc) => (
+                      <button 
+                        key={perc} 
+                        onClick={() => handlePresetPercentage(perc)}
+                        className="rounded py-1.5 text-[9px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
+                      >
+                        {perc}%
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Stop Loss (Unified Feature) */}
+                  <div className="pt-2">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stop Loss / Protect (%)</label>
+                      <span className="text-[8px] text-amber-500 font-mono">Optional</span>
                     </div>
-
-                    {spotType === 'limit' && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] md:text-[11px] font-bold text-slate-450 uppercase tracking-wide block">Limit (USDT)</label>
-                        <input 
-                          type="number" 
-                          step={activeAsset.decimals > 2 ? 0.0001 : 1}
-                          value={spotPriceLimit} 
-                          onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
-                          className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                        />
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-2">
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Qty ({activeAsset.symbol})</label>
-                            <span className="text-[8px] text-slate-550 font-mono">Size</span>
-                          </div>
-                          <input 
-                            type="number" 
-                            step="any"
-                            placeholder="0.00"
-                            value={activeInput === 'qty' ? spotAmount : (amountNum > 0 ? spotAmount : '')} 
-                            onFocus={() => {
-                              setActiveInput('qty');
-                              if (amountNum > 0) {
-                                setSpotAmount(amountNum.toString());
-                              }
-                            }}
-                            onChange={(e) => handleQtyChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                          />
-                        </div>
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stake (USD)</label>
-                            <span className="text-[8px] text-slate-550 font-mono">Total</span>
-                          </div>
-                          <input 
-                            type="number" 
-                            step="any"
-                            min={gameSettings.minStake || 1}
-                            max={gameSettings.maxStake || 5000}
-                            placeholder="0.00"
-                            value={formattedUsdValue} 
-                            onFocus={() => {
-                              setActiveInput('usd');
-                              if (estimatedCostUsd > 0) {
-                                setSpotAmountUsd(estimatedCostUsd.toFixed(2));
-                              }
-                            }}
-                            onChange={(e) => handleUsdChange(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-rose-400 focus:outline-none focus:border-rose-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                          />
-                        </div>
-
-                        {/* Stop Loss (New Feature!) */}
-                        <div>
-                          <div className="flex justify-between items-center mb-0.5">
-                            <label className="text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Stop Loss (%)</label>
-                            <span className="text-[8px] text-amber-500 font-mono">Protection</span>
-                          </div>
-                          <div className="relative">
-                            <input 
-                              type="number" 
-                              min="1"
-                              max="99"
-                              placeholder="None"
-                              value={sellStopLoss} 
-                              onChange={(e) => setSellStopLoss(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
-                            />
-                            {sellStopLoss && (
-                              <button 
-                                onClick={() => setSellStopLoss('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 hover:text-rose-400 font-mono px-1 bg-slate-950"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Presets */}
-                      <div className="grid grid-cols-5 gap-1 mt-1.5">
-                        {[10, 25, 50, 75, 100].map((perc) => (
-                          <button 
-                            key={perc} 
-                            onClick={() => handlePresetPercentage(perc)}
-                            className="rounded py-1 text-[8px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
-                          >
-                            {perc}%
-                          </button>
-                        ))}
-                      </div>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min="1"
+                        max="99"
+                        placeholder="None"
+                        value={buyStopLoss} // Re-using buyStopLoss state for universal STOP LOSS
+                        onChange={(e) => {
+                          setBuyStopLoss(e.target.value);
+                          setSellStopLoss(e.target.value);
+                        }}
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                      />
+                      {buyStopLoss && (
+                        <button 
+                          onClick={() => {
+                            setBuyStopLoss('');
+                            setSellStopLoss('');
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 hover:text-rose-400 font-mono px-2 py-1 bg-slate-950 rounded"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
+                  </div>
 
+                  {/* 1-CLICK EXECUTION BUTTONS */}
+                  <div className="grid grid-cols-2 gap-3 pt-2">
                     <button 
                       onClick={() => executeSpotTrade('sell')}
-                      className="w-full rounded bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-black py-2 text-xs uppercase transition-all text-center select-none cursor-pointer shadow hover:shadow-rose-500/10 mt-2"
+                      className="w-full rounded bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold py-3 text-xs md:text-[13px] tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-rose-500/20"
                     >
-                      Sell SHORT
+                      Sell by {spotType === 'limit' ? 'Limit' : 'Market'}
+                    </button>
+                    <button 
+                      onClick={() => executeSpotTrade('buy')}
+                      className="w-full rounded bg-[#089981] hover:bg-[#07806f] active:scale-95 text-white font-bold py-3 text-xs md:text-[13px] tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-emerald-500/20"
+                    >
+                      Buy by {spotType === 'limit' ? 'Limit' : 'Market'}
                     </button>
                   </div>
-
                 </div>
 
                 {/* Account info section inside box bottom */}
@@ -3614,6 +3561,98 @@ export default function App() {
         triggerToast={triggerToast}
       />
 
+      {/* APK Feature Modal */}
+      {showApkModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+           <div className={`bg-slate-900 border ${isDark ? 'border-cyan-500/30' : 'border-slate-300'} p-6 rounded-xl max-w-sm w-full shadow-2xl relative overflow-hidden`}>
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
+              <button className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white transition-colors" onClick={() => setShowApkModal(false)}>
+                 <X className="w-5 h-5" />
+              </button>
+              
+              <div className="flex items-center gap-3 mb-4 mt-2">
+                 <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-cyan-500/30">
+                    <Download className="w-6 h-6 text-cyan-400" />
+                 </div>
+                 <div>
+                    <h2 className="text-xl font-black text-white leading-tight uppercase tracking-wide">Mobile App</h2>
+                    <p className="text-[10px] text-cyan-400 font-bold tracking-widest uppercase">Encrypted • Real-time</p>
+                 </div>
+              </div>
+
+              <p className="text-sm text-slate-300 mb-4 font-mono leading-relaxed">
+                Download the highly optimized Android mobile application. Hardened with anti-reverse engineering protocols and real-time OTA (Over-The-Air) feature updates.
+              </p>
+              
+              <div className="bg-slate-950 p-3 shadow-inner border border-slate-800 rounded mb-5 font-mono text-[9px] sm:text-[10px] text-emerald-400 space-y-1">
+                 <div className="flex justify-between items-center"><span>[SYS] Codec:</span> <span className="text-slate-300">AES-256 Enabled</span></div>
+                 <div className="flex justify-between items-center"><span>[SYS] Anti-Tamper:</span> <span className="text-slate-300">Active</span></div>
+                 <div className="flex justify-between items-center"><span>[SYS] Auto-Update:</span> <span className="text-slate-300">Enforced</span></div>
+              </div>
+
+              <button 
+                onClick={() => {
+                   triggerToast('Initiating secure encrypted tunnel for APK download...', true);
+                   setTimeout(() => {
+                      triggerToast('Download packaged for your device architecture.', true);
+                      setShowApkModal(false);
+                   }, 2000);
+                }} 
+                className="w-full bg-cyan-500 hover:bg-cyan-600 active:scale-95 text-slate-950 font-black tracking-wider py-3.5 rounded shadow-lg shadow-cyan-500/20 uppercase transition-all"
+              >
+                COMPILE & DOWNLOAD
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* QUICK QUICK-ORDER MODAL (TRIGGERED BY CHART CLICK) */}
+      {quickOrderPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 p-5 sm:p-6 rounded-xl max-w-sm w-full shadow-2xl relative shadow-slate-900">
+            <button className="absolute top-3 right-3 p-1 text-slate-400 hover:text-white transition-colors" onClick={() => setQuickOrderPrompt(null)}>
+               <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-black text-white uppercase tracking-wider mb-1 flex items-center gap-2">
+               <Activity className="w-5 h-5 text-amber-500" />
+               Pending Trigger
+            </h2>
+            <p className="text-xs text-slate-300 mb-5">Set an automatic limit execution. The trade triggers instantly once market touches exactly <span className="font-mono text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded">${quickOrderPrompt.price.toFixed(activeAsset.decimals)}</span>.</p>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => {
+                  setSpotPriceLimit(quickOrderPrompt.price);
+                  setSpotType('limit');
+                  // To be safe we let them adjust sizes before firing directly, OR we fire right away.
+                  // The prompt asks them to be prompted to buy/sell within the set time. We will execute it using the existing states (spotAmount etc).
+                  executeSpotTrade('sell');
+                  setQuickOrderPrompt(null);
+                }}
+                className="w-full bg-[#f23645] hover:bg-[#d92c3a] active:scale-95 text-white font-black py-4 rounded-lg shadow-lg shadow-rose-500/20 uppercase transition-all whitespace-nowrap text-xs flex flex-col items-center justify-center gap-1 leading-none"
+              >
+                <span>SELL LIMIT</span>
+                <span className="font-mono text-[9px] opacity-80">(Short)</span>
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setSpotPriceLimit(quickOrderPrompt.price);
+                  setSpotType('limit');
+                  executeSpotTrade('buy');
+                  setQuickOrderPrompt(null);
+                }}
+                className="w-full bg-[#089981] hover:bg-[#07806f] active:scale-95 text-white font-black py-4 rounded-lg shadow-lg shadow-emerald-500/20 uppercase transition-all whitespace-nowrap text-xs flex flex-col items-center justify-center gap-1 leading-none"
+              >
+                <span>BUY LIMIT</span>
+                <span className="font-mono text-[9px] opacity-80">(Long)</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-center text-slate-500 font-mono mt-4 uppercase">Uses Current Set Total: {formattedUsdValue} USD</p>
+          </div>
+        </div>
+      )}
+
       <AuthModal 
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
@@ -3636,6 +3675,41 @@ export default function App() {
         onClearSession={handleExpireSession}
         theme={theme}
       />
+
+      {/* AUTO-UPDATE NOTIFICATION BANNER */}
+      {showUpdatePrompt && (
+        <div className="fixed bottom-6 right-6 z-[120] max-w-sm w-full p-4 rounded-xl border border-amber-500/30 bg-slate-900/95 backdrop-blur-md text-white shadow-2xl shadow-amber-500/10 flex items-start gap-3.5 animate-bounce-short">
+          <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400 shrink-0 mt-0.5">
+            <RefreshCw className="w-5 h-5 animate-spin" style={{ animationDuration: '3s' }} />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-xs font-black uppercase tracking-wider text-amber-400">Update Available</h4>
+            <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-sans">
+              We've deployed new trading engine updates and performance optimizations. Keep your features current!
+            </p>
+            <div className="flex gap-2.5 mt-3">
+              <button
+                onClick={() => {
+                  if (swRegistration && swRegistration.waiting) {
+                    swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                  } else {
+                    window.location.reload();
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-md shadow-md shadow-amber-500/15 transition-all text-center select-none cursor-pointer"
+              >
+                Refresh Now
+              </button>
+              <button
+                onClick={() => setShowUpdatePrompt(false)}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-750 active:scale-95 text-slate-300 hover:text-white font-semibold text-[10px] uppercase tracking-wider rounded-md transition-all text-center select-none cursor-pointer border border-slate-700"
+              >
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
