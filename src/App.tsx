@@ -13,7 +13,7 @@ import SessionTimeoutModal from './components/SessionTimeoutModal';
 import PriceAlertsManager from './components/PriceAlertsManager';
 import Walkthrough from './components/Walkthrough';
 import { ASSETSList } from './data';
-import { Asset, Tick, Contract, TradeHistoryItem, Account, IndicatorConfig, ContractType, PriceAlert } from './types';
+import { Asset, Tick, Contract, TradeHistoryItem, Account, IndicatorConfig, ContractType, PriceAlert, PendingLimitOrder } from './types';
 import { 
   Bot, 
   HelpCircle, 
@@ -282,26 +282,6 @@ export default function App() {
     }
   };
 
-  // Asset configurations
-  const [activeAsset, setActiveAsset] = useState<Asset>(() => {
-    // Try to start on a major crypto asset or falls back
-    const btc = ASSETSList.find(a => a.symbol.includes('BTC') || a.id.includes('BTC'));
-    return btc || ASSETSList[0];
-  });
-  const [assetsRegistry, setAssetsRegistry] = useState<Asset[]>(ASSETSList);
-  const [assetsTicksMap, setAssetsTicksMap] = useState<Record<string, Tick[]>>(() =>
-    initializeAssetHistory(ASSETSList)
-  );
-
-  // Indicator Settings
-  const [indicatorConfig, setIndicatorConfig] = useState<IndicatorConfig>({
-    sma: { enabled: true, period: 10 },
-    ema: { enabled: false, period: 20 },
-    rsi: { enabled: true, period: 10 }
-  });
-
-  const [chartType, setChartType] = useState<'line' | 'candles'>('candles');
-
   // Load initial context for partitioning to prevent cross-user and cross-mode leakage
   const initialUser = (() => {
     const saved = localStorage.getItem('lwex_current_user');
@@ -330,6 +310,40 @@ export default function App() {
     const userIdStr = initialUser ? initialUser.id : 'guest';
     return `${userIdStr}_${initialAccountMode}`;
   })();
+
+  // Asset configurations
+  const [activeAsset, setActiveAsset] = useState<Asset>(() => {
+    // Try to start on a major crypto asset or falls back
+    const btc = ASSETSList.find(a => a.symbol.includes('BTC') || a.id.includes('BTC'));
+    return btc || ASSETSList[0];
+  });
+  const [assetsRegistry, setAssetsRegistry] = useState<Asset[]>(ASSETSList);
+  const [assetsTicksMap, setAssetsTicksMap] = useState<Record<string, Tick[]>>(() => {
+    const saved = localStorage.getItem(`lwex_ticks_history_${initialPartitionId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          const keys = Object.keys(parsed);
+          if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse saved ticks history from localStorage:', e);
+      }
+    }
+    return initializeAssetHistory(ASSETSList);
+  });
+
+  // Indicator Settings
+  const [indicatorConfig, setIndicatorConfig] = useState<IndicatorConfig>({
+    sma: { enabled: true, period: 10 },
+    ema: { enabled: false, period: 20 },
+    rsi: { enabled: true, period: 10 }
+  });
+
+  const [chartType, setChartType] = useState<'line' | 'candles'>('candles');
 
   // Contracts & History Log portfolios - Isolate using partition-specific keys (user + mode)
   const [activeContracts, setActiveContracts] = useState<Contract[]>(() => {
@@ -376,6 +390,27 @@ export default function App() {
     return [];
   });
 
+  const [pendingLimitOrders, setPendingLimitOrders] = useState<PendingLimitOrder[]>(() => {
+    const saved = localStorage.getItem(`lwex_pending_limit_orders_${initialPartitionId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse pending limit orders from localStorage', e);
+      }
+    }
+    return [];
+  });
+
+  const pendingLimitOrdersRef = useRef(pendingLimitOrders);
+  useEffect(() => {
+    pendingLimitOrdersRef.current = pendingLimitOrders;
+    localStorage.setItem(`lwex_pending_limit_orders_${initialPartitionId}`, JSON.stringify(pendingLimitOrders));
+  }, [pendingLimitOrders, initialPartitionId]);
+
   const prevPartitionIdRef = useRef<string>(initialPartitionId);
 
   const activeContractsRef = useRef(activeContracts);
@@ -402,6 +437,24 @@ export default function App() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  const assetsTicksMapRef = useRef(assetsTicksMap);
+  useEffect(() => {
+    assetsTicksMapRef.current = assetsTicksMap;
+  }, [assetsTicksMap]);
+
+  // Periodically persist the entire candles/ticks history of the active partition to localStorage
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentUserIdStr = currentUserRef.current ? currentUserRef.current.id : 'guest';
+      const currentMode = accountRef.current ? accountRef.current.mode : 'demo';
+      const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
+      
+      localStorage.setItem(`lwex_ticks_history_${currentPartitionId}`, JSON.stringify(assetsTicksMapRef.current));
+    }, 5000); // Saves once every 5 seconds to prevent performance degradation
+
+    return () => clearInterval(interval);
+  }, []);
 
   const lastServerDataRef = useRef<string>('');
   const hasSyncedFromServerRef = useRef<boolean>(false);
@@ -573,6 +626,416 @@ export default function App() {
     }
   };
 
+  const backfillGapsAndSettle = (now: number, targetPartitionId: string, initialContracts?: Contract[], initialHistory?: TradeHistoryItem[]) => {
+    // 1. Get current ticks map
+    let ticksMap = { ...assetsTicksMapRef.current };
+    
+    // If empty ticks map, try loading it from localStorage or initialize
+    if (Object.keys(ticksMap).length === 0) {
+      const savedTicks = localStorage.getItem(`lwex_ticks_history_${targetPartitionId}`);
+      if (savedTicks) {
+        try {
+          ticksMap = JSON.parse(savedTicks);
+        } catch (e) {}
+      }
+    }
+    
+    if (Object.keys(ticksMap).length === 0) {
+      ticksMap = initializeAssetHistory(ASSETSList);
+    }
+
+    // Find last tick time
+    const keys = Object.keys(ticksMap);
+    if (keys.length === 0) return;
+    
+    const firstAssetTicks = ticksMap[keys[0]];
+    if (!firstAssetTicks || firstAssetTicks.length === 0) return;
+    
+    const lastTickTime = firstAssetTicks[firstAssetTicks.length - 1].time;
+    const gapMs = now - lastTickTime;
+    
+    // Gap must be at least 5 seconds to trigger backfill
+    if (gapMs < 5000) {
+      // Normal load: make sure ticks map is updated if empty
+      if (Object.keys(assetsTicksMapRef.current).length === 0) {
+        setAssetsTicksMap(ticksMap);
+      }
+      return;
+    }
+    
+    console.log(`[LWEX Backfill] Gap detected: ${Math.floor(gapMs / 1000)} seconds. Backfilling history and settling offline trades...`);
+    
+    // 2. Load contracts and history
+    let contracts = initialContracts || [...activeContractsRef.current];
+    let history = initialHistory || [...tradeHistoryRef.current];
+    
+    const currentMode = accountRef.current.mode;
+    
+    // Find active contracts that are expired before `now`
+    const activeExpired = contracts.filter(c => c.status === 'active' && c.expiryTime <= now);
+    
+    // Simulating sequence of ticks
+    let maxExpiry = lastTickTime;
+    if (activeExpired.length > 0) {
+      maxExpiry = Math.max(...activeExpired.map(c => c.expiryTime));
+    }
+    
+    // Setup pricing state
+    const priceState: Record<string, number> = {};
+    ASSETSList.forEach(asset => {
+      const assetTicks = ticksMap[asset.id] || [];
+      priceState[asset.id] = assetTicks.length > 0 ? assetTicks[assetTicks.length - 1].price : asset.price;
+    });
+
+    const walkAsset = (assetId: string, currentPrice: number, stepSec: number) => {
+      const asset = ASSETSList.find(a => a.id === assetId);
+      if (!asset) return currentPrice;
+      const trendBias = asset.trendBias;
+      const volatility = asset.volatility;
+      const volatilityMult = gameSettingsRef.current?.volatilityMultiplier || 1;
+      const totalBias = trendBias + (gameSettingsRef.current?.globalTrendBias || 0);
+      const walkFactor = (Math.random() - 0.5 + totalBias) * 1.5;
+      const stepScale = Math.sqrt(stepSec);
+      return currentPrice * (1 + walkFactor * ((volatility * volatilityMult / 100) * stepScale));
+    };
+
+    // Helper to evaluate a contract at a specific timestamp and price
+    const evaluateContractAtStep = (contract: Contract, stepTime: number, stepPrice: number) => {
+      let isExpired = stepTime >= contract.expiryTime;
+      let ticksPassed = Math.floor((stepTime - contract.entryTime) / 1000);
+      if (ticksPassed < 0) ticksPassed = 0;
+
+      const actualBarrier = contract.barrier || contract.entryPrice;
+
+      let currentProfit = 0;
+      let status: 'active' | 'won' | 'lost' = 'active';
+
+      if (contract.type === 'rise-fall') {
+        const goingUp = contract.direction === 'rise';
+        const priceChange = goingUp ? (stepPrice - contract.entryPrice) : (contract.entryPrice - stepPrice);
+        currentProfit = (priceChange / contract.entryPrice) * contract.stake * 500;
+      } else if (contract.type === 'higher-lower') {
+        const isHigher = contract.direction === 'higher';
+        const priceChange = isHigher ? (stepPrice - actualBarrier) : (actualBarrier - stepPrice);
+        currentProfit = (priceChange / actualBarrier) * contract.stake * 500;
+      } else if (contract.type === 'touch-no-touch') {
+        const isTouch = contract.direction === 'touch';
+        const touched = (contract.barrierOffset && contract.barrierOffset > 0)
+          ? (actualBarrier >= contract.entryPrice ? stepPrice >= actualBarrier : stepPrice <= actualBarrier)
+          : false;
+
+        if (isTouch) {
+          if (touched) {
+            currentProfit = contract.stake * 0.955;
+            status = 'won';
+          } else {
+            currentProfit = -contract.stake;
+            status = 'active';
+          }
+        } else {
+          if (touched) {
+            currentProfit = -contract.stake;
+            status = 'lost';
+          } else {
+            currentProfit = contract.stake * 0.955;
+            status = 'active';
+          }
+        }
+      } else if (contract.type === 'digit-over-under') {
+        const decimals = contract.assetSymbol.includes('MFLOW') ? 4 : 2;
+        const lastDigit = parseInt(stepPrice.toFixed(decimals).split('').pop() || '0');
+        const isOver = contract.direction === 'over';
+        const success = isOver 
+          ? lastDigit > (contract.targetDigit || 0)
+          : lastDigit < (contract.targetDigit || 0);
+        
+        currentProfit = success ? contract.stake * 0.90 : -contract.stake;
+      }
+
+      const calculatedSellPrice = Math.max(0, contract.stake + currentProfit);
+
+      let isStopLossTriggered = false;
+      let isTakeProfitTriggered = false;
+      let earlyExitRefund = 0;
+
+      if (contract.stopLoss && contract.stopLoss > 0) {
+        const slPercent = contract.stopLoss;
+        let priceAgainstPct = 0;
+        if (contract.direction === 'rise' || contract.direction === 'higher' || contract.direction === 'touch') {
+          priceAgainstPct = contract.entryPrice > stepPrice 
+            ? ((contract.entryPrice - stepPrice) / contract.entryPrice) * 100 
+            : 0;
+        } else {
+          priceAgainstPct = stepPrice > contract.entryPrice 
+            ? ((stepPrice - contract.entryPrice) / contract.entryPrice) * 150 
+            : 0;
+        }
+
+        const stakeLossPct = ((contract.stake - calculatedSellPrice) / contract.stake) * 100;
+        if (priceAgainstPct >= slPercent || stakeLossPct >= slPercent) {
+          isStopLossTriggered = true;
+          earlyExitRefund = calculatedSellPrice;
+        }
+      }
+
+      if (!isStopLossTriggered && contract.stopLossPrice) {
+        if (contract.direction === 'rise' || contract.direction === 'higher') {
+          if (stepPrice <= contract.stopLossPrice) isStopLossTriggered = true;
+        } else {
+          if (stepPrice >= contract.stopLossPrice) isStopLossTriggered = true;
+        }
+        if (isStopLossTriggered) earlyExitRefund = calculatedSellPrice;
+      }
+
+      if (!isStopLossTriggered && !isTakeProfitTriggered && contract.takeProfitPrice) {
+        if (contract.direction === 'rise' || contract.direction === 'higher') {
+          if (stepPrice >= contract.takeProfitPrice) isTakeProfitTriggered = true;
+        } else {
+          if (stepPrice <= contract.takeProfitPrice) isTakeProfitTriggered = true;
+        }
+        if (isTakeProfitTriggered) earlyExitRefund = calculatedSellPrice;
+      }
+
+      if (calculatedSellPrice <= 0) {
+        isStopLossTriggered = true;
+        earlyExitRefund = 0;
+      }
+
+      return {
+        isExpired,
+        isStopLossTriggered,
+        isTakeProfitTriggered,
+        status,
+        currentProfit,
+        calculatedSellPrice,
+        earlyExitRefund,
+        ticksPassed
+      };
+    };
+
+    let balanceDeltaTotal = 0;
+    const accumulatedTicks: Record<string, Tick[]> = {};
+    ASSETSList.forEach(asset => {
+      accumulatedTicks[asset.id] = [...(ticksMap[asset.id] || [])];
+    });
+
+    const triggerSettlement = (contract: Contract, finalStatus: string, finalPayout: number, netProfit: number, exitPrice: number, blockExitRefund: number) => {
+      const histItem: TradeHistoryItem = {
+        id: contract.id,
+        assetName: contract.assetName,
+        assetSymbol: contract.assetSymbol,
+        type: contract.type,
+        direction: contract.direction,
+        stake: contract.stake,
+        payout: finalPayout,
+        profit: netProfit,
+        status: finalStatus as any,
+        entryPrice: contract.entryPrice,
+        exitPrice: exitPrice,
+        purchaseTime: contract.entryTime
+      };
+
+      history.push(histItem);
+      balanceDeltaTotal += finalPayout;
+      
+      const isDemo = currentMode === 'demo';
+      if (currentUserRef.current) {
+        fetch('/api/users/update-balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUserRef.current.id,
+            amount: finalPayout,
+            isDemo,
+            consumeForceOutcome: false
+          })
+        })
+        .catch(err => console.error('[Backfill] Error updating user balance:', err));
+      }
+
+      triggerToast(`Offline Trade Settled: ${contract.assetSymbol} ended in ${finalStatus.toUpperCase()}. Net payout: $${finalPayout.toFixed(2)} (${netProfit >= 0 ? '+' : ''}$${netProfit.toFixed(2)} Profit)`, netProfit >= 0);
+    };
+
+    // Sub-Step 1: Walk second-by-second from `lastTickTime` to `maxExpiry`
+    if (maxExpiry > lastTickTime) {
+      const stepInterval = 1000;
+      for (let t = lastTickTime + stepInterval; t <= maxExpiry; t += stepInterval) {
+        ASSETSList.forEach(asset => {
+          priceState[asset.id] = walkAsset(asset.id, priceState[asset.id], 1);
+          if (t >= now - 1500 * 1000) {
+            accumulatedTicks[asset.id].push({ time: t, price: priceState[asset.id] });
+          }
+        });
+
+        contracts = contracts.map(contract => {
+          if (contract.status !== 'active') return contract;
+          const currentPrice = priceState[contract.assetId];
+
+          const evalResult = evaluateContractAtStep(contract, t, currentPrice);
+
+          if (evalResult.isExpired || evalResult.status !== 'active' || evalResult.isStopLossTriggered || evalResult.isTakeProfitTriggered) {
+            let finalStatus = (evalResult.isStopLossTriggered || evalResult.isTakeProfitTriggered) ? 'sold' : (evalResult.status !== 'active' ? evalResult.status : (evalResult.currentProfit >= 0 ? 'won' : 'lost'));
+            
+            let force = currentUserRef.current?.forceOutcome || gameSettingsRef.current?.forceOutcome;
+            if (force === 'win' && !evalResult.isStopLossTriggered && !evalResult.isTakeProfitTriggered) finalStatus = 'won';
+            if (force === 'loss' && !evalResult.isStopLossTriggered && !evalResult.isTakeProfitTriggered) finalStatus = 'lost';
+
+            const isWon = finalStatus === 'won';
+            const isSold = finalStatus === 'sold';
+            
+            let netProfit = 0;
+            if (isSold) {
+              netProfit = evalResult.earlyExitRefund - contract.stake;
+            } else {
+              netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
+            }
+
+            if (netProfit > 0 && currentUserRef.current?.maxWinLimit && currentUserRef.current.maxWinLimit > 0 && netProfit > currentUserRef.current.maxWinLimit) {
+              netProfit = currentUserRef.current.maxWinLimit;
+            }
+            if (netProfit < 0 && currentUserRef.current?.maxLossLimit && currentUserRef.current.maxLossLimit > 0 && Math.abs(netProfit) > currentUserRef.current.maxLossLimit) {
+              netProfit = -currentUserRef.current.maxLossLimit;
+            }
+
+            const finalPayout = contract.stake + netProfit;
+            triggerSettlement(contract, finalStatus, finalPayout, netProfit, currentPrice, evalResult.earlyExitRefund);
+
+            return {
+              ...contract,
+              status: finalStatus as any,
+              exitPrice: currentPrice,
+              exitTime: t,
+              ticksPassed: evalResult.ticksPassed,
+              currentPrice: currentPrice,
+              currentProfit: evalResult.currentProfit,
+              ticksHistory: [...(contract.ticksHistory || []), { time: t, price: currentPrice }]
+            };
+          }
+
+          return {
+            ...contract,
+            ticksPassed: evalResult.ticksPassed,
+            currentPrice: currentPrice,
+            currentProfit: evalResult.currentProfit,
+            ticksHistory: [...(contract.ticksHistory || []), { time: t, price: currentPrice }]
+          };
+        });
+      }
+    }
+
+    // Sub-Step 2: Jump the macro gap from `maxExpiry` to `now - 1500 * 1000` (if any gap exists)
+    const macroStart = Math.max(lastTickTime, maxExpiry);
+    const macroEnd = now - 1500 * 1000;
+    const macroGapSeconds = Math.floor((macroEnd - macroStart) / 1000);
+    
+    if (macroGapSeconds > 10) {
+      const macroSteps = 50;
+      const stepSeconds = macroGapSeconds / macroSteps;
+      for (let s = 1; s <= macroSteps; s++) {
+        ASSETSList.forEach(asset => {
+          priceState[asset.id] = walkAsset(asset.id, priceState[asset.id], stepSeconds);
+        });
+      }
+    }
+
+    // Sub-Step 3: Simulate high-density 1-second ticks from macroEnd (or first position) to `now`
+    const highDensityStart = Math.max(macroStart, macroEnd);
+    const stepInterval = 1000;
+    for (let t = Math.floor(highDensityStart / 1000) * 1000 + stepInterval; t <= now; t += stepInterval) {
+      ASSETSList.forEach(asset => {
+        priceState[asset.id] = walkAsset(asset.id, priceState[asset.id], 1);
+        accumulatedTicks[asset.id].push({ time: t, price: priceState[asset.id] });
+      });
+
+      contracts = contracts.map(contract => {
+        if (contract.status !== 'active') return contract;
+        const currentPrice = priceState[contract.assetId];
+
+        const evalResult = evaluateContractAtStep(contract, t, currentPrice);
+
+        if (evalResult.isExpired || evalResult.status !== 'active' || evalResult.isStopLossTriggered || evalResult.isTakeProfitTriggered) {
+          let finalStatus = (evalResult.isStopLossTriggered || evalResult.isTakeProfitTriggered) ? 'sold' : (evalResult.status !== 'active' ? evalResult.status : (evalResult.currentProfit >= 0 ? 'won' : 'lost'));
+          
+          let force = currentUserRef.current?.forceOutcome || gameSettingsRef.current?.forceOutcome;
+          if (force === 'win' && !evalResult.isStopLossTriggered && !evalResult.isTakeProfitTriggered) finalStatus = 'won';
+          if (force === 'loss' && !evalResult.isStopLossTriggered && !evalResult.isTakeProfitTriggered) finalStatus = 'lost';
+
+          const isWon = finalStatus === 'won';
+          const isSold = finalStatus === 'sold';
+          
+          let netProfit = 0;
+          if (isSold) {
+            netProfit = evalResult.earlyExitRefund - contract.stake;
+          } else {
+            netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
+          }
+
+          if (netProfit > 0 && currentUserRef.current?.maxWinLimit && currentUserRef.current.maxWinLimit > 0 && netProfit > currentUserRef.current.maxWinLimit) {
+            netProfit = currentUserRef.current.maxWinLimit;
+          }
+          if (netProfit < 0 && currentUserRef.current?.maxLossLimit && currentUserRef.current.maxLossLimit > 0 && Math.abs(netProfit) > currentUserRef.current.maxLossLimit) {
+             netProfit = -currentUserRef.current.maxLossLimit;
+          }
+
+          const finalPayout = contract.stake + netProfit;
+          triggerSettlement(contract, finalStatus, finalPayout, netProfit, currentPrice, evalResult.earlyExitRefund);
+
+          return {
+            ...contract,
+            status: finalStatus as any,
+            exitPrice: currentPrice,
+            exitTime: t,
+            ticksPassed: evalResult.ticksPassed,
+            currentPrice: currentPrice,
+            currentProfit: evalResult.currentProfit,
+            ticksHistory: [...(contract.ticksHistory || []), { time: t, price: currentPrice }]
+          };
+        }
+
+        return {
+          ...contract,
+          ticksPassed: evalResult.ticksPassed,
+          currentPrice: currentPrice,
+          currentProfit: evalResult.currentProfit,
+          ticksHistory: [...(contract.ticksHistory || []), { time: t, price: currentPrice }]
+        };
+      });
+    }
+
+    if (balanceDeltaTotal !== 0) {
+      setAccount(prev => ({ ...prev, balance: prev.balance + balanceDeltaTotal }));
+      if (currentMode === 'real') {
+        setRealAccountBalance(prev => Math.max(0, prev + balanceDeltaTotal));
+      }
+    }
+
+    const finalTicksMap: Record<string, Tick[]> = {};
+    ASSETSList.forEach(asset => {
+      finalTicksMap[asset.id] = (accumulatedTicks[asset.id] || []).slice(-1500);
+    });
+
+    localStorage.setItem(`lwex_ticks_history_${targetPartitionId}`, JSON.stringify(finalTicksMap));
+    localStorage.setItem(`lwex_active_contracts_${targetPartitionId}`, JSON.stringify(contracts));
+    localStorage.setItem(`lwex_history_${targetPartitionId}`, JSON.stringify(history));
+
+    setAssetsTicksMap(finalTicksMap);
+    setActiveContracts(contracts);
+    setTradeHistory(history);
+
+    setAssetsRegistry((prevReg) =>
+      prevReg.map((item) => {
+        const nextPrice = priceState[item.id];
+        if (nextPrice === undefined) return item;
+        const lastPrice = item.price;
+        return {
+          ...item,
+          price: nextPrice,
+          change: lastPrice ? ((nextPrice - lastPrice) / lastPrice) * 100 : item.change
+        };
+      })
+    );
+  };
+
   // Sync account details, active contracts portfolio, trade history, price alerts, and balance atomically when currentUser or mode changes
   useEffect(() => {
     let syncInterval: any;
@@ -631,6 +1094,7 @@ export default function App() {
     const savedContracts = localStorage.getItem(`lwex_active_contracts_${targetPartitionId}`);
     const savedHistory = localStorage.getItem(`lwex_history_${targetPartitionId}`);
     const savedAlerts = localStorage.getItem(`lwex_price_alerts_${targetPartitionId}`);
+    const savedTicks = localStorage.getItem(`lwex_ticks_history_${targetPartitionId}`);
 
     let nextContracts: Contract[] = [];
     let nextHistory: TradeHistoryItem[] = [];
@@ -655,28 +1119,76 @@ export default function App() {
       } catch (e) {}
     }
 
-    // Set portfolio states
-    setActiveContracts(nextContracts);
-    setTradeHistory(nextHistory);
-    setPriceAlerts(nextAlerts);
+    if (JSON.stringify(priceAlertsRef.current) !== JSON.stringify(nextAlerts)) {
+      setPriceAlerts(nextAlerts);
+    }
+
+    const now = getServerTime();
+    let gapTriggeredBackfill = false;
+
+    if (savedTicks) {
+      try {
+        const parsed = JSON.parse(savedTicks);
+        if (parsed && typeof parsed === 'object') {
+          const keys = Object.keys(parsed);
+          if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
+            const firstAssetTicks = parsed[keys[0]];
+            if (firstAssetTicks && firstAssetTicks.length > 0) {
+              const lastTickTime = firstAssetTicks[firstAssetTicks.length - 1].time;
+              if (now - lastTickTime >= 5000) {
+                backfillGapsAndSettle(now, targetPartitionId, nextContracts, nextHistory);
+                gapTriggeredBackfill = true;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse saved ticks history partition-level:', e);
+      }
+    } else {
+      // First time loading partition or user has no saved ticks, trigger initial generation
+      const initialMap = initializeAssetHistory(ASSETSList);
+      localStorage.setItem(`lwex_ticks_history_${targetPartitionId}`, JSON.stringify(initialMap));
+      setAssetsTicksMap(initialMap);
+      gapTriggeredBackfill = true;
+    }
+
+    if (!gapTriggeredBackfill) {
+      if (savedTicks) {
+        try {
+          const parsed = JSON.parse(savedTicks);
+          setAssetsTicksMap(parsed);
+        } catch (e) {}
+      }
+      if (JSON.stringify(activeContractsRef.current) !== JSON.stringify(nextContracts)) {
+        setActiveContracts(nextContracts);
+      }
+      if (JSON.stringify(tradeHistoryRef.current) !== JSON.stringify(nextHistory)) {
+        setTradeHistory(nextHistory);
+      }
+    }
 
     // Sync account details
     if (currentUser) {
-      setAccount(prev => {
-        const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
-        const userDemoBal = Number(currentUser.demo_balance) || 10000.00;
-        const nextId = `m-ac-${currentUser.id}`;
-        
-        return {
-          ...prev,
+      const userRealBal = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
+      const userDemoBal = Number(currentUser.demo_balance) || 10000.00;
+      const nextId = `m-ac-${currentUser.id}`;
+      const targetBalance = targetMode === 'real' ? userRealBal : userDemoBal;
+      
+      const currAcc = accountRef.current;
+      if (currAcc.mode !== targetMode || currAcc.balance !== targetBalance || currAcc.id !== nextId) {
+        setAccount({
+          ...currAcc,
           mode: targetMode,
-          balance: targetMode === 'real' ? userRealBal : userDemoBal,
+          balance: targetBalance,
           id: nextId
-        };
-      });
+        });
+      }
 
       const startRealUserBalance = Number(currentUser.real_balance) || Number(currentUser.balance) || 0;
-      setRealAccountBalance(startRealUserBalance);
+      if (realAccountBalance !== startRealUserBalance) {
+        setRealAccountBalance(startRealUserBalance);
+      }
 
       // Fetch latest values and enable periodic balance sync
       syncUserBalance();
@@ -687,13 +1199,18 @@ export default function App() {
       }, 1500); // Increased rate for faster cross-device sync
     } else {
       // Guest fallback
-      setAccount(prev => ({
-        ...prev,
-        mode: 'demo',
-        balance: 10000.00,
-        id: 'demo-temp-acc'
-      }));
-      setRealAccountBalance(0.00);
+      const currAcc = accountRef.current;
+      if (currAcc.mode !== 'demo' || currAcc.balance !== 10000.00 || currAcc.id !== 'demo-temp-acc') {
+        setAccount({
+          ...currAcc,
+          mode: 'demo',
+          balance: 10000.00,
+          id: 'demo-temp-acc'
+        });
+      }
+      if (realAccountBalance !== 0.00) {
+        setRealAccountBalance(0.00);
+      }
     }
 
     // Update synchronization checkpoint ref
@@ -711,7 +1228,7 @@ export default function App() {
   const [spotAmountUsd, setSpotAmountUsd] = useState<string>('');
   const [activeInput, setActiveInput] = useState<'qty' | 'usd'>('qty');
   const [spotDuration, setSpotDuration] = useState<number>(5);
-  const [spotDurationUnit, setSpotDurationUnit] = useState<'ticks' | 'seconds' | 'minutes'>('seconds');
+  const [spotDurationUnit, setSpotDurationUnit] = useState<'ticks' | 'seconds' | 'minutes' | 'hours' | 'days'>('seconds');
 
   const [quickOrderPrompt, setQuickOrderPrompt] = useState<{ price: number } | null>(null);
   const [showApkModal, setShowApkModal] = useState<boolean>(false);
@@ -768,6 +1285,7 @@ export default function App() {
       localStorage.setItem(`lwex_history_${currentPartitionId}`, JSON.stringify(tradeHistory));
       localStorage.setItem(`lwex_active_contracts_${currentPartitionId}`, JSON.stringify(activeContracts));
       localStorage.setItem(`lwex_price_alerts_${currentPartitionId}`, JSON.stringify(priceAlerts));
+      localStorage.setItem(`lwex_pending_limit_orders_${currentPartitionId}`, JSON.stringify(pendingLimitOrders));
 
       const stripVolatileLocal = (contracts: Contract[]) => {
         return contracts.map(c => {
@@ -804,7 +1322,7 @@ export default function App() {
       localStorage.removeItem('lwex_current_user');
       localStorage.setItem('lwex_logged_out', 'true');
     }
-  }, [account, tradeHistory, activeContracts, realAccountBalance, currentUser, priceAlerts]);
+  }, [account, tradeHistory, activeContracts, realAccountBalance, currentUser, priceAlerts, pendingLimitOrders]);
 
   // Modals & Panels Switches
   const [isCashierOpen, setIsCashierOpen] = useState(false);
@@ -1241,6 +1759,25 @@ export default function App() {
   useEffect(() => {
     const loopInterval = setInterval(() => {
       const now = getServerTime();
+      
+      // Keep candle generated continuously by running backfill if massive gap detected
+      const ticksMap = assetsTicksMapRef.current;
+      const keys = Object.keys(ticksMap);
+      if (keys.length > 0) {
+        const firstAssetTicks = ticksMap[keys[0]];
+        if (firstAssetTicks && firstAssetTicks.length > 0) {
+          const lastTickTime = firstAssetTicks[firstAssetTicks.length - 1].time;
+          const gapMs = now - lastTickTime;
+          if (gapMs >= 5000) {
+            const targetUserIdStr = currentUserRef.current ? currentUserRef.current.id : 'guest';
+            const targetMode = currentUserRef.current ? accountRef.current.mode : 'demo';
+            const targetPartitionId = `${targetUserIdStr}_${targetMode}`;
+            backfillGapsAndSettle(now, targetPartitionId);
+            return;
+          }
+        }
+      }
+
       const nextPricesMap: Record<string, number> = {};
 
       setAssetsTicksMap((prevTicksMap) => {
@@ -1304,6 +1841,82 @@ export default function App() {
         })
       );
 
+      // Check and trigger pending limit orders
+      const currentPending = pendingLimitOrdersRef.current;
+      if (currentPending.length > 0) {
+        const triggeredOrders: typeof currentPending = [];
+        const remainingOrders: typeof currentPending = [];
+
+        currentPending.forEach((order) => {
+          const nextPrice = nextPricesMap[order.assetId];
+          if (nextPrice === undefined) {
+            remainingOrders.push(order);
+            return;
+          }
+
+          const isTriggered = 
+            (order.direction === 'buy' && nextPrice <= order.limitPrice) ||
+            (order.direction === 'sell' && nextPrice >= order.limitPrice);
+
+          if (isTriggered) {
+            triggeredOrders.push(order);
+          } else {
+            remainingOrders.push(order);
+          }
+        });
+
+        if (triggeredOrders.length > 0) {
+          setPendingLimitOrders(remainingOrders);
+
+          setActiveContracts((prevActive) => {
+            const nextActive = [...prevActive];
+
+            triggeredOrders.forEach((order) => {
+              const orderAsset = ASSETSList.find((a) => a.id === order.assetId) || activeAsset;
+              const nextPrice = nextPricesMap[order.assetId] || orderAsset.price;
+              const ratePercentage = gameSettingsRef.current.payoutRate !== undefined ? gameSettingsRef.current.payoutRate : 95.5;
+              const payoutRate = ratePercentage / 100;
+              const targetPayout = order.stake * (1 + payoutRate);
+
+              const newContract: Contract = {
+                id: `mt-${Math.random().toString(36).substring(2, 12)}`,
+                assetId: order.assetId,
+                assetName: order.assetName,
+                assetSymbol: order.assetSymbol,
+                type: 'rise-fall',
+                direction: order.direction === 'buy' ? 'rise' : 'fall',
+                stake: order.stake,
+                payout: targetPayout,
+                basis: 'stake',
+                barrier: undefined,
+                barrierOffset: undefined,
+                entryPrice: nextPrice,
+                entryTime: getServerTime(),
+                duration: order.duration,
+                durationUnit: order.durationUnit,
+                expiryTime: getServerTime() + (
+                  order.durationUnit === 'minutes' ? order.duration * 60 * 1000 : 
+                  order.durationUnit === 'seconds' ? order.duration * 1000 : 
+                  order.duration * TICK_INTERVAL_MS
+                ),
+                ticksHistory: [{ time: getServerTime(), price: nextPrice }],
+                ticksPassed: 0,
+                currentPrice: nextPrice,
+                currentProfit: 0,
+                sellPrice: order.stake * 0.85,
+                status: 'active',
+                stopLoss: order.stopLoss
+              };
+
+              nextActive.push(newContract);
+              triggerToast(`Limit Order Triggered: Secured ${order.direction.toUpperCase()} on ${order.assetSymbol} at $${nextPrice.toFixed(4)} (Target: $${order.limitPrice.toFixed(4)}).`, true);
+            });
+
+            return nextActive;
+          });
+        }
+      }
+
       // Update active contract metrics on the ticking target safely in ONE sweep
       setActiveContracts((prevContracts) => {
         if (prevContracts.length === 0) return prevContracts;
@@ -1322,7 +1935,11 @@ export default function App() {
           }
           
           let totalDurationInSeconds = contract.duration;
-          if (contract.durationUnit === 'minutes') {
+          if (contract.durationUnit === 'days') {
+            totalDurationInSeconds = contract.duration * 24 * 60 * 60;
+          } else if (contract.durationUnit === 'hours') {
+            totalDurationInSeconds = contract.duration * 60 * 60;
+          } else if (contract.durationUnit === 'minutes') {
             totalDurationInSeconds = contract.duration * 60;
           } else if (contract.durationUnit === 'ticks') {
             totalDurationInSeconds = contract.duration; // 1 tick = 1 second
@@ -1623,7 +2240,7 @@ export default function App() {
     direction: any;
     stake: number;
     duration: number;
-    durationUnit: 'ticks' | 'seconds' | 'minutes';
+    durationUnit: 'ticks' | 'seconds' | 'minutes' | 'hours' | 'days';
     barrierOffset?: number;
     targetDigit?: number;
     stopLoss?: number;
@@ -1665,7 +2282,9 @@ export default function App() {
       barrier = isUpDir ? latestPrice + config.barrierOffset : latestPrice - config.barrierOffset;
     }
 
-    const getDurationMs = (duration: number, unit: 'ticks' | 'seconds' | 'minutes') => {
+    const getDurationMs = (duration: number, unit: 'ticks' | 'seconds' | 'minutes' | 'hours' | 'days') => {
+      if (unit === 'days') return duration * 24 * 60 * 60 * 1000;
+      if (unit === 'hours') return duration * 60 * 60 * 1000;
       if (unit === 'minutes') return duration * 60 * 1000;
       if (unit === 'seconds') return duration * 1000;
       return duration * TICK_INTERVAL_MS;
@@ -1875,21 +2494,124 @@ export default function App() {
       return;
     }
 
-    handleAddPriceAlert(activeAsset.price, 'above');
-
     const stopLossText = direction === 'buy' ? buyStopLoss : sellStopLoss;
     const stopLossNum = parseFloat(stopLossText);
     const stopLoss = (!isNaN(stopLossNum) && stopLossNum > 0) ? stopLossNum : undefined;
 
-    // Simulate buying options using the Spot Panel inputs seamlessly with custom duration settings
-    handlePurchaseContract({
-      type: 'rise-fall',
-      direction: direction === 'buy' ? 'rise' : 'fall',
-      stake: Math.max(10, calculatedStake),
-      duration: spotDuration,
-      durationUnit: spotDurationUnit,
-      stopLoss
-    });
+    if (spotType === 'limit') {
+      const limitPriceNum = parseFloat(String(spotPriceLimit));
+      if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
+        triggerToast("Please input a valid Limit Price.", false);
+        return;
+      }
+
+      const newOrder: PendingLimitOrder = {
+        id: `lim-${Math.random().toString(36).substring(2, 12)}`,
+        assetId: activeAsset.id,
+        assetName: activeAsset.name,
+        assetSymbol: activeAsset.symbol,
+        direction,
+        stake: calculatedStake,
+        duration: spotDuration,
+        durationUnit: spotDurationUnit,
+        limitPrice: limitPriceNum,
+        stopLoss,
+        createdAt: getServerTime()
+      };
+
+      // Deduct balance instantly
+      setAccount((prev) => ({ ...prev, balance: prev.balance - calculatedStake }));
+      if (account.mode === 'real') {
+        setRealAccountBalance((prev) => Math.max(0, prev - calculatedStake));
+      }
+
+      // Synchronize with server balance
+      if (currentUser) {
+        const isDemo = account.mode === 'demo';
+        fetch('/api/users/update-balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            amount: -calculatedStake,
+            isDemo
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.success) {
+            setAccount((prev) => ({ ...prev, balance: data.balance }));
+            if (!isDemo) {
+              setRealAccountBalance(data.balance);
+            }
+            setCurrentUser((prevUser: any) => {
+              if (!prevUser) return null;
+              const updated = { ...prevUser, balance: data.balance };
+              localStorage.setItem('lwex_current_user', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        })
+        .catch(err => console.error('Failed to sync balance on limit order placement:', err));
+      }
+
+      setPendingLimitOrders((prev) => [...prev, newOrder]);
+      triggerToast(`Limit Order Placed: Execution scheduled when ${activeAsset.symbol} covers $${limitPriceNum.toFixed(4)}.`, true);
+    } else {
+      // Market order
+      handlePurchaseContract({
+        type: 'rise-fall',
+        direction: direction === 'buy' ? 'rise' : 'fall',
+        stake: Math.max(10, calculatedStake),
+        duration: spotDuration,
+        durationUnit: spotDurationUnit,
+        stopLoss
+      });
+    }
+  };
+
+  const handleCancelPendingLimitOrder = (orderId: string) => {
+    const order = pendingLimitOrders.find(o => o.id === orderId);
+    if (!order) return;
+
+    // Refund stake back to the user's account balance
+    setAccount((prev) => ({ ...prev, balance: prev.balance + order.stake }));
+    if (account.mode === 'real') {
+      setRealAccountBalance((prev) => Math.max(0, prev + order.stake));
+    }
+
+    // Call server API for balance sync immediately if user is logged in
+    if (currentUser) {
+      const isDemo = account.mode === 'demo';
+      fetch('/api/users/update-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          amount: order.stake,
+          isDemo
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          setAccount((prev) => ({ ...prev, balance: data.balance }));
+          if (!isDemo) {
+            setRealAccountBalance(data.balance);
+          }
+          setCurrentUser((prevUser: any) => {
+            if (!prevUser) return null;
+            const updated = { ...prevUser, balance: data.balance };
+            localStorage.setItem('lwex_current_user', JSON.stringify(updated));
+            return updated;
+          });
+        }
+      })
+      .catch(err => console.error('Failed to sync balance on cancel limit:', err));
+    }
+
+    setPendingLimitOrders((prev) => prev.filter(o => o.id !== orderId));
+    triggerToast(`Limit Order Cancelled: Stake of $${order.stake.toFixed(2)} refunded.`, true);
   };
 
   const handleQtyChange = (qtyVal: string) => {
@@ -2940,14 +3662,14 @@ export default function App() {
                       className="col-span-5 bg-slate-950 border border-slate-900 rounded-lg text-center font-mono text-xs font-extrabold focus:outline-none focus:border-amber-500 text-white p-2"
                     />
                     {/* Unit Toggle Buttons */}
-                    <div className="col-span-7 flex rounded-lg bg-slate-950 border border-slate-900 p-0.5 text-[9px] font-mono">
-                      {(['ticks', 'seconds', 'minutes'] as const).map((unit) => (
+                    <div className="col-span-7 flex rounded-lg bg-slate-950 border border-slate-900 p-0.5 text-[8px] font-mono leading-none">
+                      {(['ticks', 'seconds', 'minutes', 'hours', 'days'] as const).map((unit) => (
                         <button
                           key={unit}
                           onClick={() => setSpotDurationUnit(unit)}
-                          className={`flex-1 text-center py-1.5 rounded uppercase font-bold transition-all ${spotDurationUnit === unit ? 'bg-amber-500/25 text-amber-400 font-extrabold' : 'text-slate-500 hover:text-slate-300'}`}
+                          className={`flex-1 text-center py-1.5 rounded uppercase font-bold transition-all ${spotDurationUnit === unit ? 'bg-amber-500/25 text-amber-400 font-extrabold pb-1.5' : 'text-slate-500 hover:text-slate-300'}`}
                         >
-                          {unit === 'ticks' ? 'Ticks' : unit === 'seconds' ? 'Sec' : 'Min'}
+                          {unit === 'ticks' ? 'Ticks' : unit === 'seconds' ? 'Sec' : unit === 'minutes' ? 'Min' : unit === 'hours' ? 'Hrs' : 'Days'}
                         </button>
                       ))}
                     </div>
@@ -3136,6 +3858,8 @@ export default function App() {
                   activeTab={positionsTab}
                   onChangeTab={handlePositionsTabChange}
                   cashoutMode={(gameSettings as any)?.cashoutMode || 'enabled'}
+                  pendingLimitOrders={pendingLimitOrders}
+                  onCancelPendingOrder={handleCancelPendingLimitOrder}
                 />
               </div>
             </div>

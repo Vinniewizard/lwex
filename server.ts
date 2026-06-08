@@ -53,6 +53,8 @@ function getSqliteInstance() {
         profit_target REAL DEFAULT 0.00,
         max_win_limit REAL DEFAULT 0.00,
         max_loss_limit REAL DEFAULT 0.00,
+        first_deposit_amount REAL DEFAULT 0.0,
+        first_deposit_promo_credited INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_login TEXT
@@ -66,6 +68,8 @@ function getSqliteInstance() {
     try { rawDb.exec("ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN verified_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_amount REAL DEFAULT 0.0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_promo_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE app_settings ADD COLUMN game_settings TEXT DEFAULT '{}'"); } catch(e) {}
@@ -206,7 +210,8 @@ function getSqliteInstance() {
         rawDb.exec(`
           INSERT INTO telegram_campaigns (id, message, interval_minutes, is_active, created_at) VALUES
           ('camp-1', '💸 Exclusive VIP Promo: Deposit $50+ today and get a +30% margin balance bonus immediately! Enter options contract code LW30 in cashier.', 30, 1, '${new Date().toISOString()}'),
-          ('camp-2', '🧠 Dynamic Wizard Signal Alert: Follow current MFLOW rise options trigger. RSI indicates strong upward momentum on the hourly chart!', 15, 1, '${new Date().toISOString()}');
+          ('camp-2', '🧠 Dynamic Wizard Signal Alert: Follow current MFLOW rise options trigger. RSI indicates strong upward momentum on the hourly chart!', 15, 1, '${new Date().toISOString()}'),
+          ('camp-3', '🎁 EXTRA BONUS INVITATION! Invite friends to join our Telegram group to unlock shared trader bonuses! Plus, enjoy an automatic 200% match bonus on your first deposit after completing 5 trades! Register now and claim real-time trade signals: https://lwex.onrender.com/', 45, 1, '${new Date().toISOString()}');
         `);
       }
     } catch (e) {}
@@ -319,6 +324,8 @@ function getD1Database() {
             profit_target REAL DEFAULT 0.00,
             max_win_limit REAL DEFAULT 0.00,
             max_loss_limit REAL DEFAULT 0.00,
+            first_deposit_amount REAL DEFAULT 0.0,
+            first_deposit_promo_credited INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             last_login TEXT
@@ -331,6 +338,8 @@ function getD1Database() {
           ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT '';
           ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_bonus_credited INTEGER DEFAULT 0;
           ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_bonus_credited INTEGER DEFAULT 0;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_amount REAL DEFAULT 0.0;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_promo_credited INTEGER DEFAULT 0;
           ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS game_settings TEXT DEFAULT '{}';
 
           CREATE TABLE IF NOT EXISTS user_sessions (
@@ -471,7 +480,8 @@ function getD1Database() {
             await client.query(`
               INSERT INTO telegram_campaigns (id, message, interval_minutes, is_active, created_at) VALUES
               ('camp-1', '💸 Exclusive VIP Promo: Deposit $50+ today and get a +30% margin balance bonus immediately! Enter options contract code LW30 in cashier.', 30, 1, '${new Date().toISOString()}'),
-              ('camp-2', '🧠 Dynamic Wizard Signal Alert: Follow current MFLOW rise options trigger. RSI indicates strong upward momentum on the hourly chart!', 15, 1, '${new Date().toISOString()}')
+              ('camp-2', '🧠 Dynamic Wizard Signal Alert: Follow current MFLOW rise options trigger. RSI indicates strong upward momentum on the hourly chart!', 15, 1, '${new Date().toISOString()}'),
+              ('camp-3', '🎁 EXTRA BONUS INVITATION! Invite friends to join our Telegram group to unlock shared trader bonuses! Plus, enjoy an automatic 200% match bonus on your first deposit after completing 5 trades! Register now and claim real-time trade signals: https://lwex.onrender.com/', 45, 1, '${new Date().toISOString()}')
             `);
           }
         } catch (e) {}
@@ -1021,15 +1031,93 @@ Active technical indicator values: ${indicatorsString}.`}`;
     }
   });
 
-  async function applyFirstDepositBonusIfEligible(db: any, userId: string, depositAmount: number, now: string) {
+  async function getTradesCount(db: any, userId: string): Promise<number> {
+    let count = 0;
     try {
-      const user = await db.prepare("SELECT first_deposit_bonus_credited FROM users WHERE id = ?").bind(userId).first();
-      if (user && user.first_deposit_bonus_credited !== 1) {
-        const bonusAmount = depositAmount * 0.50;
-        await db.prepare("UPDATE users SET real_balance = real_balance + ?, first_deposit_bonus_credited = 1, updated_at = ? WHERE id = ?")
+      const states = await db.prepare("SELECT trade_history FROM user_states WHERE user_id = ?").bind(userId).all();
+      const rows = states.results || states || [];
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          if (row && row.trade_history) {
+            try {
+              const parsed = JSON.parse(row.trade_history);
+              if (Array.isArray(parsed)) {
+                count += parsed.length;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[BONUS SYSTEM ERROR] Error counting user trades:", err);
+    }
+    return count;
+  }
+
+  async function checkAndApply200PercentBonus(db: any, userId: string, now: string) {
+    try {
+      const user = await db.prepare("SELECT first_deposit_amount, first_deposit_promo_credited FROM users WHERE id = ?").bind(userId).first();
+      if (!user) return;
+
+      if (user.first_deposit_promo_credited === 1) {
+        return; // Already awarded
+      }
+
+      let firstDepositAmt = Number(user.first_deposit_amount || 0);
+      if (firstDepositAmt <= 0) {
+        // Fallback: try finding first credited deposit if exists
+        const firstDep = await db.prepare("SELECT amount FROM credited_deposits WHERE user_id = ? ORDER BY credited_at ASC LIMIT 1").bind(userId).first();
+        if (firstDep && firstDep.amount > 0) {
+          firstDepositAmt = Number(firstDep.amount);
+          await db.prepare("UPDATE users SET first_deposit_amount = ?, updated_at = ? WHERE id = ?")
+            .bind(firstDepositAmt, now, userId)
+            .run();
+          console.log(`[BONUS SYSTEM] Recovered user's first deposit amount of $${firstDepositAmt} for User ${userId}`);
+        }
+      }
+
+      if (firstDepositAmt <= 0) {
+        return; // No deposit has been recorded yet
+      }
+
+      const tradesCount = await getTradesCount(db, userId);
+      console.log(`[BONUS SYSTEM - 200% CHECK] User ${userId}: First Deposit = $${firstDepositAmt}, Total trades = ${tradesCount}`);
+      
+      if (tradesCount > 5) {
+        const bonusAmount = firstDepositAmt * 2.0;
+        await db.prepare("UPDATE users SET real_balance = real_balance + ?, first_deposit_promo_credited = 1, updated_at = ? WHERE id = ?")
           .bind(bonusAmount, now, userId)
           .run();
-        console.log(`[BONUS SYSTEM] Successfully applied 50% First Deposit Match Bonus of $${bonusAmount} for User ${userId}`);
+        console.log(`[BONUS SYSTEM - 200%] MATCH COMMITTED! Successfully credited 200% First Deposit Match Bonus of $${bonusAmount} to User ${userId}`);
+      }
+    } catch (err: any) {
+      console.error("[BONUS SYSTEM ERROR] checkAndApply200PercentBonus failed:", err.message);
+    }
+  }
+
+  async function applyFirstDepositBonusIfEligible(db: any, userId: string, depositAmount: number, now: string) {
+    try {
+      const user = await db.prepare("SELECT first_deposit_bonus_credited, first_deposit_amount FROM users WHERE id = ?").bind(userId).first();
+      if (user) {
+        // Record first deposit amount if it hasn't been set yet
+        const currentFirstDepositAmt = Number(user.first_deposit_amount || 0);
+        if (currentFirstDepositAmt <= 0) {
+          await db.prepare("UPDATE users SET first_deposit_amount = ?, updated_at = ? WHERE id = ?")
+            .bind(depositAmount, now, userId)
+            .run();
+          console.log(`[BONUS SYSTEM] Successfully set user ${userId} first_deposit_amount as $${depositAmount}`);
+        }
+
+        if (user.first_deposit_bonus_credited !== 1) {
+          const bonusAmount = depositAmount * 0.50;
+          await db.prepare("UPDATE users SET real_balance = real_balance + ?, first_deposit_bonus_credited = 1, updated_at = ? WHERE id = ?")
+            .bind(bonusAmount, now, userId)
+            .run();
+          console.log(`[BONUS SYSTEM] Successfully applied 50% First Deposit Match Bonus of $${bonusAmount} for User ${userId}`);
+        }
+
+        // Also run the 200% bonus evaluation check (if they already have > 5 trades at time of deposit)
+        await checkAndApply200PercentBonus(db, userId, now);
       }
     } catch (err: any) {
       console.error("[BONUS SYSTEM ERROR] applyFirstDepositBonusIfEligible failed:", err.message);
@@ -1935,11 +2023,14 @@ Active technical indicator values: ${indicatorsString}.`}`;
       
       const userId = authHeader.split(' ')[1];
       const db = getD1Database();
-      const user = await db.prepare('SELECT u.id, u.email, u.full_name as fullName, p.phone, u.account_type, u.demo_balance, u.real_balance, p.verification_status as verificationStatus FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?').bind(userId).first();
+      const user = await db.prepare('SELECT u.id, u.email, u.full_name as fullName, p.phone, u.account_type, u.demo_balance, u.real_balance, p.verification_status as verificationStatus, u.first_deposit_amount as firstDepositAmount, u.first_deposit_promo_credited as firstDepositPromoCredited FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?').bind(userId).first();
       
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
+      
+      const tradesCount = await getTradesCount(db, userId);
+      user.tradesCount = tradesCount;
       
       return res.json({ success: true, user });
     } catch (err: any) {
@@ -2053,6 +2144,9 @@ Active technical indicator values: ${indicatorsString}.`}`;
           .bind(activeContractsStr, tradeHistoryStr, priceAlertsStr, now, userId, mode)
           .run();
       }
+
+      // Check if user qualifies for the 200% first deposit promo bonus
+      await checkAndApply200PercentBonus(db, userId, now);
 
       return res.json({ success: true });
     } catch (err: any) {
@@ -2448,7 +2542,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       let responseText = '';
       if (text.startsWith('/start') || text.toLowerCase().includes('hello') || text.toLowerCase().includes('hi ')) {
-        responseText = `<b>🔮 Welcome to LWEX Exchange Official Portal Bot!</b>\n\nGuiding users into derivatives mastery with zero-loss training.\n\n📈 <b>Active Synthetic Index:</b> MFLOW\n💰 <b>Demo balance pre-loaded:</b> $25,678.91 USDT\n\n<b>Commands available:</b>\n/register — Claim free demo credentials & registration link\n/signals — Scan technical oracle signals\n/mflow — Probe active index stats\n/guides — Access complete platform instruction manuals\n/help — Show interface directives`;
+        responseText = `<b>🔮 Welcome to LWEX Exchange Official Portal Bot!</b>\n\nGuiding users into derivatives mastery with zero-loss training.\n\n📈 <b>Active Synthetic Index:</b> MFLOW\n💰 <b>Demo balance pre-loaded:</b> $25,678.91 USDT\n\n<b>Commands available:</b>\n/register — Claim free demo credentials & registration link\n/signals — Scan technical oracle signals\n/mflow — Probe active index stats\n/guides — Access complete platform instruction manuals\n/invite — Get your special Bonus Invitation & promo details\n/help — Show interface directives`;
       } else if (text.startsWith('/register') || text.toLowerCase().includes('register') || text.toLowerCase().includes('signup')) {
         const appUrl = 'https://lwex.onrender.com/';
         responseText = `<b>🚀 Start Binary & Index Trading on LWEX!</b>\n\n1. Open: ${appUrl}\n2. Enter registration profile parameters.\n3. Instantly claim <b>$25,678.91 USDT</b> practice capital!\n4. Link handle inside options console for live notification webhooks.`;
@@ -2461,6 +2555,10 @@ Active technical indicator values: ${indicatorsString}.`}`;
             joinedAt: new Date().toISOString()
           });
         }
+      } else if (text.startsWith('/invite') || text.startsWith('/bonus')) {
+        const appUrl = 'https://lwex.onrender.com/';
+        const groupLink = telegramConfig.groupLink || 'https://t.me/+V9H-AvU6wl43MTNk';
+        responseText = `<b>🎁 INVITATION BONUS & PROMOTIONAL LAUNCH! 🎁</b>\n\nInvite your trading circles and double your active investment wallet matches!\n\n✨ <b>200% FIRST DEPOSIT MATCH BONUS</b> ✨\nMake your first complete deposit on LWEX and execute more than 5 trades in Real Mode to unlock a magnificent <b>200% Cash Balance match</b> automatically credited to your wallet!\n\n🌟 <b>Referrals Community Reward:</b> Share this Telegram group connection link with your friends to attract elite members and claim shared VIP indicators!\n\n🔗 <b>Register & Trade on Web:</b> ${appUrl}\n👥 <b>Group Invitation Link:</b> ${groupLink}\n\n<i>Help us grow the largest options trading circle on the planet! 📈🔥</i>`;
       } else if (text.startsWith('/signals') || text.toLowerCase().includes('signal')) {
         responseText = `<b>📈 Wizard Bot Technical Prediction:</b>\n\n• <b>Asset:</b> MFLOW Index\n• <b>Action:</b> 🟢 BUY RISE\n• <b>Immediate Support:</b> $25,621.00\n• <b>Target resistance:</b> $25,710.00\n• <b>Confidence Index:</b> 84%\n\n<i>Oracle Notes: RSI moving average indicates oversold condition. Strong up-trend in option volume.</i>`;
       } else if (text.startsWith('/mflow') || text.toLowerCase().includes('mflow')) {
@@ -2478,7 +2576,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       } else if (text.startsWith('/guide_withdrawal')) {
         responseText = `<b>📥 How to Request a Withdrawal on LWEX</b>\n\nInitiate secure fund settlements anytime:\n\n1. Click on <b>Cashier</b> and navigate to the <b>Withdraw</b> tab.\n2. Ensure your active account is set to <b>Real Balance</b> mode and you have settled funds.\n3. Enter your Crypto standard network (USDT TRC-20 recommended for low fees) and input your destination wallet address.\n4. Verify your identity with your pre-set profile PIN or Two-Factor security challenge.\n5. Submit your withdrawal request. Requests are fully audited by the ledger and settled in 15–30 minutes!`;
       } else if (text.startsWith('/help')) {
-        responseText = `<b>🤖 Wizard Bot Command Manual:</b>\n\n• /start — Welcome dashboard\n• /register — Onboard profile link\n• /signals — Live AI technical advice\n• /mflow — Retrieve synthetic index status\n• /guides — Interactive step-by-step procedures`;
+        responseText = `<b>🤖 Wizard Bot Command Manual:</b>\n\n• /start — Welcome dashboard\n• /register — Onboard profile link\n• /signals — Live AI technical advice\n• /mflow — Retrieve synthetic index status\n• /guides — Interactive step-by-step procedures\n• /invite — Special referral invite & 200% first deposit bonus guidelines`;
       } else if (text.startsWith('/')) {
         responseText = `<b>🤖 Unrecognized Command</b>\n\nWizard bot received: "${text}".\nUse /help to see available commands.`;
       }
@@ -3237,7 +3335,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
       const command = text.trim();
 
       if (command.startsWith('/start')) {
-        responseText = `🔮 Welcome to LWEX Exchange Official Portal Bot! We have peered into MFLOW and established a preloaded $25,678.91 USDT demo balance for you.\n\nUse /register to start, or /signals to scan technical options trend.`;
+        responseText = `🔮 Welcome to LWEX Exchange Official Portal Bot! We have peered into MFLOW and established a preloaded $25,678.91 USDT demo balance for you.\n\nType /invite to view extra Bonus Incentives! Or use /register to start, and /signals to scan technical options.`;
       } else if (command.startsWith('/register')) {
         responseText = `🚀 Onboard LWEX Exchange: Open the application page, click "Register Now" to claim a fully active $25,678.91 USDT test wallet. Ready for binary options!`;
         if (!telegramMockUsers.some(u => u.username === cleanUser)) {
@@ -3248,6 +3346,9 @@ Active technical indicator values: ${indicatorsString}.`}`;
             joinedAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
           });
         }
+      } else if (command.startsWith('/invite') || command.startsWith('/bonus')) {
+        const groupLnk = telegramConfig.groupLink || 'https://t.me/+V9H-AvU6wl43MTNk';
+        responseText = `<b>🎁 INVITATION BONUS & PROMOTIONAL LAUNCH! 🎁</b>\n\nInvite your trading circles and double your active investment wallet matches!\n\n✨ <b>200% FIRST DEPOSIT MATCH BONUS</b> ✨\nMake your first complete deposit on LWEX and execute more than 5 trades in Real Mode to unlock a magnificent <b>200% Cash Balance match</b> automatically credited to your wallet!\n\n🌟 <b>Referrals Community Reward:</b> Share this Telegram group connection link with your friends to attract elite members and claim shared VIP indicators!\n\n👥 <b>Group Invitation Link:</b> ${groupLnk}\n\n<i>Help us grow the largest options trading circle on the planet! 📈🔥</i>`;
       } else if (command.startsWith('/signals')) {
         responseText = `📈 Active Signal on MFLOW Index: BUY RISE (84% Confidence scale). Support: $25,621.00. Execute binary contract trigger directly on the main page.`;
       } else if (command.startsWith('/mflow')) {
@@ -3265,7 +3366,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
           });
         }
       } else {
-        responseText = `🤖 Wizard Bot Response: Command "${command}" received. Please type /help, /register, or /signals to invoke trade prediction scripts.`;
+        responseText = `🤖 Wizard Bot Response: Command "${command}" received. Please type /help, /register, or /invite to invoke trade and bonus incentive scripts.`;
       }
 
       setTimeout(() => {

@@ -34,7 +34,7 @@ export interface Contract {
   entryPrice: number;
   entryTime: number;
   duration: number; // count
-  durationUnit: 'ticks' | 'seconds' | 'minutes';
+  durationUnit: 'ticks' | 'seconds' | 'minutes' | 'hours' | 'days';
   expiryTime: number;
   status: 'active' | 'won' | 'lost' | 'sold';
   currentPrice: number;
@@ -93,6 +93,20 @@ export interface PriceAlert {
   condition: 'above' | 'below';
   isTriggered: boolean;
   notifyEmail?: boolean;
+  createdAt: number;
+}
+
+export interface PendingLimitOrder {
+  id: string;
+  assetId: string;
+  assetName: string;
+  assetSymbol: string;
+  direction: 'buy' | 'sell';
+  stake: number;
+  duration: number;
+  durationUnit: 'ticks' | 'seconds' | 'minutes' | 'hours' | 'days';
+  limitPrice: number;
+  stopLoss?: number;
   createdAt: number;
 }
 

@@ -1044,6 +1044,7 @@ export default function WizardBot({
                         >
                           <option value="/start">/start (Greetings)</option>
                           <option value="/register">/register (Sign up link)</option>
+                          <option value="/invite">/invite (Bonus Referral Invite)</option>
                           <option value="/signals">/signals (Oracle prediction)</option>
                           <option value="/mflow">/mflow (Index stats)</option>
                           <option value="/addmem">/addmem (Simulate member invite)</option>
@@ -1352,6 +1353,18 @@ export default function WizardBot({
                     >
                       <UserPlus className="w-3 h-3" />
                       <span>Invite Simulated User</span>
+                    </button>
+
+                    {/* Broadcast group Bonus Invite */}
+                    <button
+                      onClick={() => {
+                        const message = "🎁 EXTRA BONUS INVITATION! Invite friends to join our Telegram group to unlock shared trader bonuses! Plus, enjoy an automatic 200% match bonus on your first deposit after completing 5 trades! Register now and claim real-time-trade signals: https://lwex.onrender.com/";
+                        handleBroadcastNotification(message);
+                        if (triggerToast) triggerToast("Broadcasted Bonus Invitation Campaign directly to group!", true);
+                      }}
+                      className="w-full bg-amber-650 hover:bg-amber-700 text-white font-bold py-2 rounded text-[10px] uppercase flex items-center justify-center space-x-1 cursor-pointer select-none"
+                    >
+                      <span>🎁 Broadcast group Bonus Invite</span>
                     </button>
 
                     {/* Simulate DMing users to join platform */}

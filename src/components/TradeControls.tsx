@@ -13,7 +13,7 @@ interface TradeControlsProps {
     direction: 'rise' | 'fall' | 'higher' | 'lower' | 'touch' | 'no-touch' | 'over' | 'under';
     stake: number;
     duration: number;
-    durationUnit: 'ticks' | 'seconds' | 'minutes';
+    durationUnit: 'ticks' | 'seconds' | 'minutes' | 'hours' | 'days';
     barrierOffset?: number;
     targetDigit?: number;
   }) => void;
@@ -32,7 +32,7 @@ export default function TradeControls({
   const [showAssetList, setShowAssetList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [contractType, setContractType] = useState<ContractType>('rise-fall');
-  const [durationUnit, setDurationUnit] = useState<'ticks' | 'seconds' | 'minutes'>('ticks');
+  const [durationUnit, setDurationUnit] = useState<'ticks' | 'seconds' | 'minutes' | 'hours' | 'days'>('ticks');
   const [durationValue, setDurationValue] = useState<number>(5);
   const [stake, setStake] = useState<number>(10);
   const [barrierOffset, setBarrierOffset] = useState<number>(0.5);
@@ -53,8 +53,12 @@ export default function TradeControls({
       setDurationValue(5);
     } else if (durationUnit === 'seconds') {
       setDurationValue(30);
-    } else {
-      setDurationValue(2);
+    } else if (durationUnit === 'minutes') {
+      setDurationValue(5);
+    } else if (durationUnit === 'hours') {
+      setDurationValue(1);
+    } else if (durationUnit === 'days') {
+      setDurationValue(1);
     }
   }, [durationUnit]);
 
@@ -241,20 +245,20 @@ export default function TradeControls({
         </div>
 
         {/* Duration Unit Switches */}
-        <div className={`grid grid-cols-3 gap-0.5 rounded-md p-0.5 border ${
+        <div className={`grid grid-cols-5 gap-0.5 rounded-md p-0.5 border ${
           isDark ? 'bg-slate-950 border-slate-800' : 'bg-gray-100/50 border-gray-150'
         }`}>
-          {(['ticks', 'seconds', 'minutes'] as const).map((unit) => (
+          {(['ticks', 'seconds', 'minutes', 'hours', 'days'] as const).map((unit) => (
             <button
               key={unit}
               onClick={() => setDurationUnit(unit)}
-              className={`rounded py-1 text-[9px] font-bold uppercase tracking-tight cursor-pointer ${
+              className={`rounded py-1 text-[8px] sm:text-[9px] font-bold uppercase tracking-tight cursor-pointer ${
                 durationUnit === unit
                   ? isDark ? 'bg-yellow-500 text-slate-950 font-black shadow-sm' : 'bg-black text-white font-extrabold shadow-sm'
                   : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-900/40' : 'text-gray-410 hover:text-black hover:bg-white/10'
               }`}
             >
-              {unit}
+              {unit === 'ticks' ? 'ticks' : unit === 'seconds' ? 'sec' : unit === 'minutes' ? 'min' : unit === 'hours' ? 'hrs' : 'days'}
             </button>
           ))}
         </div>
@@ -266,14 +270,14 @@ export default function TradeControls({
           <input
             type="number"
             min={durationUnit === 'ticks' ? 1 : durationUnit === 'seconds' ? 15 : 1}
-            max={durationUnit === 'ticks' ? 10 : durationUnit === 'seconds' ? 60 : 15}
+            max={durationUnit === 'ticks' ? 10 : durationUnit === 'seconds' ? 60 : durationUnit === 'minutes' ? 60 : durationUnit === 'hours' ? 24 : 7}
             value={durationValue}
             onChange={(e) => setDurationValue(Math.max(1, parseInt(e.target.value) || 1))}
             className="w-full bg-transparent px-3 text-left font-mono text-xs font-bold focus:outline-none"
           />
           <div className="flex items-center h-full border-l border-gray-200">
             <button
-              onClick={() => setDurationValue((prev) => Math.min(prev + 1, durationUnit === 'ticks' ? 10 : durationUnit === 'seconds' ? 60 : 15))}
+              onClick={() => setDurationValue((prev) => Math.min(prev + 1, durationUnit === 'ticks' ? 10 : durationUnit === 'seconds' ? 60 : durationUnit === 'minutes' ? 60 : durationUnit === 'hours' ? 24 : 7))}
               className="px-3 h-full font-bold hover:bg-gray-100 text-gray-550 border-r border-gray-200"
             >
               +

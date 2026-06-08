@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TrendingUp, TrendingDown, Clock, Activity, Award, Filter } from 'lucide-react';
-import { Contract, TradeHistoryItem } from '../types';
+import { Contract, TradeHistoryItem, PendingLimitOrder } from '../types';
 
 interface PositionsListProps {
   theme?: 'dark' | 'light';
@@ -10,6 +10,8 @@ interface PositionsListProps {
   activeTab: 'positions' | 'statements' | 'stats';
   onChangeTab: (tab: 'positions' | 'statements' | 'stats') => void;
   cashoutMode?: 'enabled' | 'disabled' | 'smart';
+  pendingLimitOrders?: PendingLimitOrder[];
+  onCancelPendingOrder?: (orderId: string) => void;
 }
 
 export default function PositionsList({
@@ -19,7 +21,9 @@ export default function PositionsList({
   onSellContract,
   activeTab,
   onChangeTab,
-  cashoutMode = 'enabled'
+  cashoutMode = 'enabled',
+  pendingLimitOrders = [],
+  onCancelPendingOrder
 }: PositionsListProps) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'won' | 'lost' | 'sold'>('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
@@ -129,135 +133,210 @@ export default function PositionsList({
       <div className="flex-1 p-4 overflow-y-auto max-h-[300px] min-h-[180px]">
         {/* TAB 1: ACTIVE CONTRACTS */}
         {activeTab === 'positions' && (
-          <div className="space-y-3">
-            {activeContracts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-2 text-gray-400">
+          <div className="space-y-5">
+            {activeContracts.length === 0 && (!pendingLimitOrders || pendingLimitOrders.length === 0) ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-2 text-gray-400">
                 <Clock className="h-8 w-8 text-gray-255" />
                 <span className="font-mono text-xs">No active running contracts. Select rise/fall trade options.</span>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {activeContracts.map((contract) => {
-                  const isProfit = contract.currentProfit >= 0;
-                  const isTickUnit = contract.durationUnit === 'ticks';
+              <>
+                {activeContracts.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest px-1">
+                      Live Running Positions ({activeContracts.length})
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {activeContracts.map((contract) => {
+                        const isProfit = contract.currentProfit >= 0;
+                        const isTickUnit = contract.durationUnit === 'ticks';
 
-                  return (
-                    <div
-                      key={contract.id}
-                      className={`rounded-lg border p-3.5 space-y-3.5 shadow-sm transition-all ${
-                        isDark ? 'border-slate-800 bg-slate-900/40 hover:bg-slate-900/80 shadow-[inset_0_1px_rgba(255,255,255,0.02)]' : 'border-gray-100 bg-gray-50/20 hover:border-gray-100'
-                      }`}
-                    >
-                      {/* Top status */}
-                      <div className={`flex items-center justify-between border-b pb-2 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
-                        <div>
-                          <span className="text-xs font-bold uppercase tracking-tight block">
-                            {contract.assetName}
-                          </span>
-                          <span className="text-[9px] font-mono font-semibold text-gray-400 block -mt-0.5">
-                            #{contract.id.substring(0, 8)} | {contract.type.replace('-', ' ').toUpperCase()}
-                          </span>
-                        </div>
-                        <span className={`inline-flex items-center space-x-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
-                          contract.direction === 'rise' || contract.direction === 'higher' || contract.direction === 'touch'
-                            ? 'bg-emerald-500/10 text-emerald-600'
-                            : 'bg-red-500/10 text-red-600'
-                        }`}>
-                          {contract.direction === 'rise' && <span>BUY LONG ▲</span>}
-                          {contract.direction === 'fall' && <span>SELL SHORT ▼</span>}
-                          {contract.direction === 'higher' && <span>HIGHER ▲</span>}
-                          {contract.direction === 'lower' && <span>LOWER ▼</span>}
-                          {contract.direction === 'touch' && <span>TOUCH ★</span>}
-                          {contract.direction === 'no-touch' && <span>NO TOUCH ✖</span>}
-                        </span>
-                      </div>
-
-                      {/* Tick details indicators */}
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="block text-[9px] text-gray-400 font-bold uppercase">Barrier Level</span>
-                          <span className="font-mono font-bold">{contract.entryPrice?.toFixed(4) ?? '0.0000'}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="block text-[9px] text-gray-400 font-bold uppercase">Active Price</span>
-                          <span className={`font-mono font-bold ${
-                            isProfit ? "text-green-600" : "text-red-500"
-                          }`}>{contract.currentPrice?.toFixed(4) ?? '0.0000'}</span>
-                        </div>
-                      </div>
-
-                      {/* Duration Progress */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[9px] text-gray-400 font-bold uppercase">
-                          <span>Elapsed Time</span>
-                          <span className="font-mono">
-                            {contract.ticksPassed}s / {contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.durationUnit === 'seconds' ? contract.duration : contract.duration}s
-                          </span>
-                        </div>
-                        {isTickUnit ? (
-                          <div className="flex space-x-1 justify-center py-1">
-                            {Array.from({ length: contract.duration }).map((_, i) => (
-                              <span
-                                key={i}
-                                className={`h-1.5 w-1.5 rounded-full transition-all duration-300 ${
-                                  i < contract.ticksPassed ? 'bg-black' : isDark ? 'bg-zinc-800' : 'bg-gray-200'
-                                }`}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className={`w-full rounded-full h-1 ${isDark ? 'bg-zinc-800' : 'bg-gray-100'}`}>
-                            <div
-                              className={`${isDark ? 'bg-amber-500' : 'bg-black'} h-1 rounded-full transition-all duration-300 max-w-full`}
-                              style={{ width: `${Math.min(100, Math.max(0, (contract.ticksPassed / (contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.duration)) * 100))}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Live Profit */}
-                      <div className={`flex items-center justify-between border-t pt-2 ${isDark ? 'border-zinc-850' : 'border-gray-100'}`}>
-                        <div>
-                          <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">
-                            Real Profit
-                          </span>
-                          <span className={`font-mono text-xs font-extrabold tracking-tight ${
-                            isProfit ? 'text-green-600' : 'text-red-500'
-                          }`}>
-                            {isProfit ? '+' : ''}${contract.currentProfit?.toFixed(2) ?? '0.00'}
-                          </span>
-                        </div>
-
-                        {/* Early buyout */}
-                        {cashoutMode === 'disabled' ? (
-                          <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded opacity-60 select-none ${
-                            isDark ? 'bg-zinc-900 border-zinc-850 text-slate-500' : 'bg-gray-50 border-gray-150 text-gray-400'
-                          }`}>
-                            CASHOUT LOCKED
-                          </span>
-                        ) : cashoutMode === 'smart' && contract.currentProfit >= 0 ? (
-                          <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded select-none ${
-                            isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-500' : 'bg-amber-50 border-amber-100 text-amber-600'
-                          }`} title="Smart Mode prevents early liquidations of winning positions. Let option run to expiration.">
-                            PROFIT LOCKED
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => onSellContract(contract.id)}
-                            className={`rounded font-mono text-[9px] font-bold tracking-tight px-3 py-1.5 border transition-colors ${
-                              isDark
-                                ? 'bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700'
-                                : 'bg-white border-gray-200 text-black hover:bg-gray-50'
+                        return (
+                          <div
+                            key={contract.id}
+                            className={`rounded-lg border p-3.5 space-y-3.5 shadow-sm transition-all ${
+                              isDark ? 'border-slate-800 bg-slate-900/40 hover:bg-slate-900/85 shadow-[inset_0_1px_rgba(255,255,255,0.02)]' : 'border-gray-100 bg-gray-50/20 hover:border-gray-100'
                             }`}
                           >
-                            CASH OUT: ${formatValue(contract.sellPrice || 0)}
-                          </button>
-                        )}
-                      </div>
+                            {/* Top status */}
+                            <div className={`flex items-center justify-between border-b pb-2 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+                              <div>
+                                <span className="text-xs font-bold uppercase tracking-tight block text-white">
+                                  {contract.assetName}
+                                </span>
+                                <span className="text-[9px] font-mono font-semibold text-gray-400 block -mt-0.5">
+                                  #{contract.id.substring(0, 8)} | {contract.type.replace('-', ' ').toUpperCase()}
+                                </span>
+                              </div>
+                              <span className={`inline-flex items-center space-x-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                                contract.direction === 'rise' || contract.direction === 'higher' || contract.direction === 'touch'
+                                  ? 'bg-emerald-500/10 text-emerald-450'
+                                  : 'bg-red-500/10 text-red-400'
+                              }`}>
+                                {contract.direction === 'rise' && <span>BUY LONG ▲</span>}
+                                {contract.direction === 'fall' && <span>SELL SHORT ▼</span>}
+                                {contract.direction === 'higher' && <span>HIGHER ▲</span>}
+                                {contract.direction === 'lower' && <span>LOWER ▼</span>}
+                                {contract.direction === 'touch' && <span>TOUCH ★</span>}
+                                {contract.direction === 'no-touch' && <span>NO TOUCH ✖</span>}
+                              </span>
+                            </div>
+
+                            {/* Tick details indicators */}
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="block text-[9px] text-gray-400 font-bold uppercase">Barrier Level</span>
+                                <span className="font-mono font-bold text-slate-100">{contract.entryPrice?.toFixed(4) ?? '0.0000'}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="block text-[9px] text-gray-400 font-bold uppercase">Active Price</span>
+                                <span className={`font-mono font-bold ${
+                                  isProfit ? "text-emerald-450" : "text-red-400"
+                                }`}>{contract.currentPrice?.toFixed(4) ?? '0.0000'}</span>
+                              </div>
+                            </div>
+
+                            {/* Duration Progress */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[9px] text-gray-400 font-bold uppercase">
+                                <span>Elapsed Time</span>
+                                <span className="font-mono">
+                                  {contract.ticksPassed}s / {contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.durationUnit === 'seconds' ? contract.duration : contract.duration}s
+                                </span>
+                              </div>
+                              {isTickUnit ? (
+                                <div className="flex space-x-1 justify-center py-1">
+                                  {Array.from({ length: contract.duration }).map((_, i) => (
+                                    <span
+                                      key={i}
+                                      className={`h-1.5 w-1.5 rounded-full transition-all duration-350 ${
+                                        i < contract.ticksPassed ? 'bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]' : isDark ? 'bg-zinc-800' : 'bg-gray-200'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className={`w-full rounded-full h-1 ${isDark ? 'bg-zinc-800' : 'bg-gray-100'}`}>
+                                  <div
+                                    className={`${isDark ? 'bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]' : 'bg-black'} h-1 rounded-full transition-all duration-300 max-w-full`}
+                                    style={{ width: `${Math.min(100, Math.max(0, (contract.ticksPassed / (contract.durationUnit === 'minutes' ? contract.duration * 60 : contract.duration)) * 100))}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Live Profit */}
+                            <div className={`flex items-center justify-between border-t pt-2.5 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+                              <div>
+                                <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                                  Real Profit
+                                </span>
+                                <span className={`font-mono text-xs font-extrabold tracking-tight ${
+                                  isProfit ? 'text-emerald-400' : 'text-rose-400'
+                                }`}>
+                                  {isProfit ? '+' : ''}${contract.currentProfit?.toFixed(2) ?? '0.00'}
+                                </span>
+                              </div>
+
+                              {/* Early buyout */}
+                              {cashoutMode === 'disabled' ? (
+                                <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded opacity-60 select-none ${
+                                  isDark ? 'bg-zinc-900 border-zinc-850 text-slate-500' : 'bg-gray-50 border-gray-150 text-gray-400'
+                                }`}>
+                                  CASHOUT LOCKED
+                                </span>
+                              ) : cashoutMode === 'smart' && contract.currentProfit >= 0 ? (
+                                <span className={`text-[9px] font-mono font-bold tracking-tight px-3 py-1.5 border rounded select-none ${
+                                  isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-500' : 'bg-amber-50 border-amber-100 text-amber-600'
+                                }`} title="Smart Mode prevents early liquidations of winning positions. Let option run to expiration.">
+                                  PROFIT LOCKED
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => onSellContract(contract.id)}
+                                  className={`rounded font-mono text-[9px] font-bold tracking-tight px-3 py-1.5 border transition-all cursor-pointer ${
+                                    isDark
+                                      ? 'bg-slate-850 border-slate-800 text-amber-400 hover:bg-slate-800 hover:text-white'
+                                      : 'bg-white border-gray-200 text-black hover:bg-gray-50'
+                                  }`}
+                                >
+                                  CASH OUT: ${formatValue(contract.sellPrice || 0)}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                )}
+
+                {pendingLimitOrders.length > 0 && (
+                  <div className="space-y-2 pt-4 border-t border-slate-900/60 mt-3">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-extrabold text-[#f59e0b] uppercase tracking-widest block">
+                        Pending Limit Orders ({pendingLimitOrders.length})
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-505 bg-slate-500/10 px-1.5 py-0.5 rounded">
+                        Target Price Trigger
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {pendingLimitOrders.map((order) => (
+                        <div
+                          key={order.id}
+                          className={`rounded-lg border p-3.5 space-y-3.5 shadow-sm transition-all ${
+                            isDark ? 'border-slate-800 bg-slate-900/40 hover:bg-slate-900/80 shadow-[inset_0_1px_rgba(255,255,255,0.02)]' : 'border-gray-100 bg-gray-50/20 hover:border-gray-105'
+                          }`}
+                        >
+                          <div className={`flex items-center justify-between border-b pb-2 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
+                            <div>
+                              <span className="text-xs font-bold uppercase tracking-tight block text-slate-200">
+                                {order.assetName}
+                              </span>
+                              <span className="text-[9px] font-mono font-semibold text-gray-550 block -mt-0.5">
+                                #{order.id.substring(0, 8)} | SPOT LIMIT
+                              </span>
+                            </div>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                              order.direction === 'buy'
+                                ? 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/20'
+                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}>
+                              {order.direction === 'buy' ? 'BUY LIMIT' : 'SELL LIMIT'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="block text-[9px] text-gray-400 font-bold uppercase">Trigger Target</span>
+                              <span className="font-mono font-black text-amber-500">${order.limitPrice.toFixed(4)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-[9px] text-gray-400 font-bold uppercase">Allocated Stake</span>
+                              <span className="font-mono font-bold text-slate-300">${order.stake.toFixed(2)}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between border-t border-slate-805/40 pt-2.5 text-[10px]">
+                            <div>
+                              <span className="block text-[9px] text-gray-450 font-bold uppercase">Settle Term</span>
+                              <span className="font-mono font-bold text-slate-300">{order.duration} {order.durationUnit.toUpperCase()}</span>
+                            </div>
+                            <button
+                              onClick={() => onCancelPendingOrder && onCancelPendingOrder(order.id)}
+                              className="rounded font-sans text-[9px] font-semibold border px-3 py-1 bg-red-950/20 hover:bg-red-900/30 text-red-400 border-red-900/40 cursor-pointer transition-all"
+                            >
+                              Cancel Order
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

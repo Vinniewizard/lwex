@@ -502,16 +502,8 @@ export default function Chart({
         const visibleCandles = visibleCandlesList.slice(-visibleCandlesCount);
         if (visibleCandles.length > 0) {
           visibleCandles.forEach((c) => {
-            let highVal = c.high;
-            let lowVal = c.low;
-            if (candleInterval === 2000) {
-              const mid = (c.open + c.close) / 2;
-              const scale = 3.5;
-              highVal = mid + (c.high - mid) * scale;
-              lowVal = mid + (c.low - mid) * scale;
-            }
-            minPrice = Math.min(minPrice, lowVal);
-            maxPrice = Math.max(maxPrice, highVal);
+            minPrice = Math.min(minPrice, c.low);
+            maxPrice = Math.max(maxPrice, c.high);
           });
         } else {
           visibleTicks.forEach((t) => {
@@ -530,7 +522,9 @@ export default function Chart({
       });
 
       const priceRange = maxPrice - minPrice || 1.0;
-      const padding = priceRange * 0.2; // 20% cushioning
+      // High-density vertical fit for candles (8% cushioning) makes them look taller/larger, line uses 20% format
+      const paddingFactor = localChartType === 'candles' ? 0.08 : 0.20;
+      const padding = priceRange * paddingFactor;
       const adjustedMin = minPrice - padding;
       const adjustedMax = maxPrice + padding;
       const adjustedPriceRange = adjustedMax - adjustedMin;
@@ -625,46 +619,19 @@ export default function Chart({
 
         if (visibleCandles.length > 0) {
           const activeWidth = width - 75;
-          let barSeparation = activeWidth / Math.max(visibleCandles.length - 1, 1);
-          
-          const isHighTF = candleInterval >= 60000;
-          if (isHighTF) {
-            // Cap horizontal separation at 20px so candles are drawn close to each other
-            barSeparation = Math.min(barSeparation, 20);
-          }
-
-          const barWidth = Math.max(Math.min(barSeparation * 0.45, 12), 4); // Perfectly proportioned width
+          // Dynamically compute separation to fill the chart, but cap at 20px so candles are always close to each other when there are few
+          const barSeparation = Math.min(activeWidth / Math.max(visibleCandles.length - 1, 1), 20);
+          const barWidth = Math.max(Math.min(barSeparation * 0.60, 14), 4); // Perfectly proportioned width
 
           visibleCandles.forEach((candle, idx) => {
-            let cX;
-            if (isHighTF) {
-              // Right-aligned spacing for a professional close-packed fit when few candles exist
-              const offsetFromRight = (visibleCandles.length - 1 - idx) * barSeparation;
-              cX = (activeWidth + 10) - offsetFromRight;
-            } else {
-              // Standard wide left-to-right filling layout for TF 2s
-              cX = (idx / Math.max(visibleCandles.length - 1, 1)) * activeWidth + 10;
-            }
+            // Right-aligned spacing for a professional, close-packed, high-fidelity experience
+            const offsetFromRight = (visibleCandles.length - 1 - idx) * barSeparation;
+            const cX = (activeWidth + 5) - offsetFromRight;
 
-            // Apply scale factor if TF is 2s (candleInterval === 2000) to make it larger in height (vertical size)
-            let openVal = candle.open;
-            let closeVal = candle.close;
-            let highVal = candle.high;
-            let lowVal = candle.low;
-
-            if (candleInterval === 2000) {
-              const mid = (candle.open + candle.close) / 2;
-              const scale = 3.5; // Stretch vertically by 3.5x to highlight price movements
-              openVal = mid + (candle.open - mid) * scale;
-              closeVal = mid + (candle.close - mid) * scale;
-              highVal = mid + (candle.high - mid) * scale;
-              lowVal = mid + (candle.low - mid) * scale;
-            }
-
-            const openY = getY(openVal);
-            const closeY = getY(closeVal);
-            const highY = getY(highVal);
-            const lowY = getY(lowVal);
+            const openY = getY(candle.open);
+            const closeY = getY(candle.close);
+            const highY = getY(candle.high);
+            const lowY = getY(candle.low);
 
             const isBull = candle.close >= candle.open;
             const color = isBull ? '#089981' : '#f23645';

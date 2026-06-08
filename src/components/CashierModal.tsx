@@ -523,6 +523,59 @@ export default function CashierModal({
           </button>
         </div>
 
+        {/* FIRST DEPOSIT 200% PROMO TRACKER GRID/BANNER */}
+        {currentUser && activeTab !== 'history' && !successMsg && (
+          <div className={`mb-4 rounded-xl border p-3.5 sm:p-4 text-xs font-sans transition-all leading-normal ${
+            theme === 'dark' 
+              ? 'bg-amber-950/20 border-amber-500/40 text-amber-200' 
+              : 'bg-amber-500/10 border-amber-300 text-amber-900'
+          }`}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] text-slate-950 font-black">🎁</span>
+              <span className="font-extrabold text-[12px] tracking-tight uppercase">200% First Deposit Match</span>
+            </div>
+            {(() => {
+              const firstDepAmt = Number(currentUser.firstDepositAmount || 0);
+              const promoCredited = currentUser.firstDepositPromoCredited === 1;
+              const tradesCompleted = Number(currentUser.tradesCount || 0);
+
+              if (firstDepAmt <= 0) {
+                return (
+                  <p className="text-[11px] leading-relaxed font-semibold">
+                    Deposit any amount and receive an additional <strong className="text-amber-400 font-extrabold">200% Bonus match credit</strong> directly into your wallet automatically after completing more than <strong className="font-extrabold text-amber-400">5 trades</strong>!
+                  </p>
+                );
+              } else if (!promoCredited) {
+                return (
+                  <div className="space-y-2">
+                    <p className="text-[11px] leading-relaxed font-semibold">
+                      You deposited <strong className="text-amber-400 font-extrabold">${firstDepAmt.toFixed(2)} USD</strong>! Complete more than 5 trades to unlock your bonus of <strong className="text-amber-400 font-extrabold">${(firstDepAmt * 2.0).toFixed(2)} USD</strong> (200% match).
+                    </p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-bold">
+                        <span>Trades Progress: {tradesCompleted} / 6 completed</span>
+                        <span>{tradesCompleted > 5 ? '100% Unlocked' : `${Math.round(Math.min((tradesCompleted / 6) * 100, 100))}%`}</span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                        <div 
+                          className="h-full rounded-full bg-amber-500 transition-all duration-500" 
+                          style={{ width: `${tradesCompleted >= 6 ? 100 : (tradesCompleted / 6) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              } else {
+                return (
+                  <p className="text-[11px] leading-relaxed font-bold text-emerald-500">
+                    🎉 <span className="uppercase tracking-wider">Double MATCH CLAIMED!</span> You've received a <strong className="font-black">${(firstDepAmt * 2.0).toFixed(2)} USD</strong> match bonus on your first deposit! Good luck with your premium binary trading portfolio!
+                  </p>
+                );
+              }
+            })()}
+          </div>
+        )}
+
         {successMsg && activeTab !== 'history' ? (
           <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 sm:p-5 text-center space-y-3 sm:space-y-4">
             <div className="mx-auto flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-green-100 text-green-600">
