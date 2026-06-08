@@ -3664,9 +3664,9 @@ export default function App() {
 
                 {/* DURATION INPUT UNIT (ticks, seconds, minutes) - CUSTOM REQUEST */}
                 <div className="space-y-1.5 p-3 rounded-lg border border-slate-900 bg-slate-950/50">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center mb-2">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Settle Duration</label>
-                    <span className="text-[9px] font-mono text-amber-500">Auto close timer</span>
+                    <span className="text-[9px] font-mono text-amber-500">Auto Close Timer</span>
                   </div>
                   <div className="grid grid-cols-12 gap-2">
                     {/* Number input */}
@@ -3753,7 +3753,7 @@ export default function App() {
                           }
                         }}
                         onChange={(e) => handleUsdChange(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm lg:text-base font-bold py-2 px-3 lg:py-3 lg:px-4 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-sm md:text-base lg:text-lg font-bold py-3 px-4 lg:py-4 lg:px-5 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                       />
                     </div>
                   </div>
