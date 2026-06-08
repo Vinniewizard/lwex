@@ -61,13 +61,13 @@ function initializeAssetHistory(assets: Asset[]): Record<string, Tick[]> {
   const baseTime = Date.now();
 
   assets.forEach((asset) => {
-    let currentPrice = asset.price;
     const tickHistory: Tick[] = [];
 
     // Prepopulate 6000 historic ticks per index asset to support deep historic candles across TFs
+    let currentPrice = Math.max(2026.90, asset.price);
     for (let i = 6000; i >= 0; i--) {
       const walkFactor = (Math.random() - 0.5 + asset.trendBias) * 1.5;
-      currentPrice = currentPrice * (1 + walkFactor * (asset.volatility / 100));
+      currentPrice = Math.max(2026.90, currentPrice * (1 + walkFactor * (asset.volatility / 100)));
       tickHistory.push({
         time: baseTime - i * 1200,
         price: currentPrice
@@ -328,7 +328,7 @@ export default function App() {
   });
   const [assetsRegistry, setAssetsRegistry] = useState<Asset[]>(ASSETSList);
   const [assetsTicksMap, setAssetsTicksMap] = useState<Record<string, Tick[]>>(() => {
-    const saved = localStorage.getItem(`lwex_ticks_history_${initialPartitionId}`);
+    const saved = localStorage.getItem(`lwex_ticks_history_v2_${initialPartitionId}`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -459,7 +459,13 @@ export default function App() {
       const currentMode = accountRef.current ? accountRef.current.mode : 'demo';
       const currentPartitionId = `${currentUserIdStr}_${currentMode}`;
       
-      localStorage.setItem(`lwex_ticks_history_${currentPartitionId}`, JSON.stringify(assetsTicksMapRef.current));
+      const ticksToSave = Object.fromEntries(
+        Object.entries(assetsTicksMapRef.current).map(([assetId, ticks]) => [
+          assetId,
+          ticks.slice(-500) // Keep only the last 500 ticks per asset
+        ])
+      );
+      localStorage.setItem(`lwex_ticks_history_v2_${currentPartitionId}`, JSON.stringify(ticksToSave));
     }, 5000); // Saves once every 5 seconds to prevent performance degradation
 
     return () => clearInterval(interval);
@@ -1825,7 +1831,9 @@ export default function App() {
 
           const totalBias = asset.trendBias + (gameSettingsRef.current.globalTrendBias || 0) + dynamicBias;
           const walkFactor = (Math.random() - 0.5 + totalBias) * 1.5;
-          const nextPrice = lastTick.price * (1 + walkFactor * (asset.volatility * (gameSettingsRef.current.volatilityMultiplier || 1) / 100));
+          const priceChange = walkFactor * (asset.volatility * (gameSettingsRef.current.volatilityMultiplier || 1) / 100);
+          // Prevent price from dropping to zero or extremely near zero
+          const nextPrice = Math.max(0.000001, lastTick.price * (1 + Math.max(-0.99, priceChange)));
 
           nextPricesMap[asset.id] = nextPrice;
 

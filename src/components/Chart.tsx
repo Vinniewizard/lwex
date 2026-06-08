@@ -733,7 +733,12 @@ export default function Chart({
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText(latestTick.price?.toFixed(asset.decimals) ?? '0.00', width - 68, latestY + 4);
+      
+      const priceVal = latestTick.price;
+      const displayPrice = (priceVal !== undefined && priceVal !== null)
+        ? priceVal.toFixed(2)
+        : '---';
+      ctx.fillText(displayPrice, width - 68, latestY + 4);
 
       // --- ACTIVE POSITION OVERLAYS ---
       activeContracts.forEach((contract) => {
@@ -953,7 +958,12 @@ export default function Chart({
           {ticks.length > 0 && (
             <div className="font-mono text-xs font-bold">
               USD <span className={asset.change >= 0 ? "text-green-500" : "text-red-500"}>
-                {ticks[ticks.length - 1]?.price?.toFixed(asset.decimals) ?? '0.00'}
+                {(() => {
+                  const p = ticks[ticks.length - 1]?.price;
+                  return (p !== undefined && p !== null) 
+                    ? p.toFixed(2)
+                    : '---';
+                })()}
               </span>
             </div>
           )}
