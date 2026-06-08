@@ -3707,7 +3707,7 @@ export default function App() {
                         step={activeAsset.decimals > 2 ? 0.0001 : 1}
                         value={spotPriceLimit} 
                         onChange={(e) => setSpotPriceLimit(parseFloat(e.target.value) || activeAsset.price)}
-                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm lg:text-base font-bold py-2 px-3 lg:py-3 lg:px-4 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                       />
                     </div>
                   )}
@@ -3730,7 +3730,7 @@ export default function App() {
                           }
                         }}
                         onChange={(e) => handleQtyChange(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm lg:text-base font-bold py-2 px-3 lg:py-3 lg:px-4 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                       />
                     </div>
                     
@@ -3753,7 +3753,7 @@ export default function App() {
                           }
                         }}
                         onChange={(e) => handleUsdChange(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm lg:text-base font-bold py-2 px-3 lg:py-3 lg:px-4 text-white focus:outline-none focus:border-amber-500/70 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                       />
                     </div>
                   </div>
@@ -3764,7 +3764,7 @@ export default function App() {
                       <button 
                         key={perc} 
                         onClick={() => handlePresetPercentage(perc)}
-                        className="rounded py-1.5 text-[9px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
+                        className="rounded py-1.5 text-[9px] md:text-[10px] font-mono font-bold border border-slate-900 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-905 transition-colors cursor-pointer"
                       >
                         {perc}%
                       </button>
@@ -3788,7 +3788,7 @@ export default function App() {
                           setBuyStopLoss(e.target.value);
                           setSellStopLoss(e.target.value);
                         }}
-                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm font-bold py-2 px-3 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
+                        className="w-full bg-slate-950 border border-slate-900 rounded-lg text-center font-sans text-xs md:text-sm lg:text-base font-bold py-2 px-3 lg:py-3 lg:px-4 text-amber-500 focus:outline-none focus:border-amber-500/75 focus:bg-slate-900 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]" 
                       />
                       {buyStopLoss && (
                         <button 
@@ -3808,13 +3808,13 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-3 pt-2">
                     <button 
                       onClick={() => executeSpotTrade('sell')}
-                      className="w-full rounded bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold py-3 text-xs md:text-[13px] tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-rose-500/20"
+                      className="w-full rounded bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-bold py-3 lg:py-4 text-xs md:text-[13px] lg:text-sm tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-rose-500/20"
                     >
                       Sell by {spotType === 'limit' ? 'Limit' : 'Market'}
                     </button>
                     <button 
                       onClick={() => executeSpotTrade('buy')}
-                      className="w-full rounded bg-[#089981] hover:bg-[#07806f] active:scale-95 text-white font-bold py-3 text-xs md:text-[13px] tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-emerald-500/20"
+                      className="w-full rounded bg-[#089981] hover:bg-[#07806f] active:scale-95 text-white font-bold py-3 lg:py-4 text-xs md:text-[13px] lg:text-sm tracking-wide uppercase transition-all text-center select-none cursor-pointer shadow-lg shadow-emerald-500/20"
                     >
                       Buy by {spotType === 'limit' ? 'Limit' : 'Market'}
                     </button>

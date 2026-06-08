@@ -627,9 +627,9 @@ export default function Chart({
           const barSeparation = Math.min(activeWidth / Math.max(visibleCandles.length - 1, 1), maxSeparation);
           
           // Slightly wider and larger candles for a more robust 5s look
-          const barWidthMultiplier = 0.70;
+          const barWidthMultiplier = 0.50;
           const maxWidthLimit = 32;
-          const minWidthLimit = 6;
+          const minWidthLimit = 4;
           const barWidth = Math.max(Math.min(barSeparation * barWidthMultiplier, maxWidthLimit), minWidthLimit);
 
           visibleCandles.forEach((candle, idx) => {
@@ -736,7 +736,7 @@ export default function Chart({
       
       const priceVal = latestTick.price;
       const displayPrice = (priceVal !== undefined && priceVal !== null)
-        ? priceVal.toFixed(2)
+        ? priceVal.toPrecision(4)
         : '---';
       ctx.fillText(displayPrice, width - 68, latestY + 4);
 
@@ -961,7 +961,7 @@ export default function Chart({
                 {(() => {
                   const p = ticks[ticks.length - 1]?.price;
                   return (p !== undefined && p !== null) 
-                    ? p.toFixed(2)
+                    ? p.toPrecision(4)
                     : '---';
                 })()}
               </span>
