@@ -1613,6 +1613,13 @@ export default function App() {
     };
   }, []);
 
+  // Sync tradeHistory to server automatically when it changes
+  useEffect(() => {
+    if (currentUser) {
+      pushUserState(activeContracts, tradeHistory, priceAlerts);
+    }
+  }, [tradeHistory]);
+
   useEffect(() => {
     const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes session duration (600 seconds)
     const WARNING_THRESHOLD_MS = 9 * 60 * 1000; // Starts 60 seconds prior to expiration (540 seconds)
@@ -1741,13 +1748,36 @@ export default function App() {
 
   // Credit balance after server-side cashier verification
   const handleDepositCashier = (amount: number) => {
-    setAccount((prev) => {
-      const nextBal = prev.balance + amount;
-      if (prev.mode === 'real') {
-        setRealAccountBalance(nextBal);
-      }
-      return { ...prev, balance: nextBal };
-    });
+    // Sync with server balance first
+    if (currentUser) {
+      const isDemo = account.mode === 'demo';
+      fetch('/api/users/update-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          amount: amount,
+          isDemo
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          setAccount((prev) => ({ ...prev, balance: data.balance }));
+          if (!isDemo) {
+            setRealAccountBalance(data.balance);
+          }
+          setCurrentUser((prevUser: any) => {
+            if (!prevUser) return null;
+            const updated = { ...prevUser, balance: data.balance };
+            localStorage.setItem('lwex_current_user', JSON.stringify(updated));
+            return updated;
+          });
+        }
+      })
+      .catch(err => console.error('Failed to sync balance on deposit:', err));
+    }
+    
     triggerToast(`Deposited $${amount.toLocaleString()} into portfolio index.`, true);
   };
 
@@ -2102,6 +2132,8 @@ export default function App() {
             } else {
               netProfit = isWon ? (contract.payout - contract.stake) : -contract.stake;
             }
+            
+            console.log(`[DEBUG] Finalizing Trade ${contract.id}: Status=${finalStatus}, Stake=${contract.stake}, Payout=${contract.payout}, NetProfit=${netProfit}.`);
 
             // Apply Admin win limits
             if (netProfit > 0 && currentUser?.maxWinLimit && currentUser.maxWinLimit > 0 && netProfit > currentUser.maxWinLimit) {
@@ -2274,6 +2306,12 @@ export default function App() {
     
     if (config.stake > maxS) {
       triggerToast(`Stake too high. Maximum allowed is $${maxS.toFixed(2)}.`, false);
+      return;
+    }
+
+    // Admin check: max concurrent trades
+    if (currentUser?.maxConcurrentTrades && currentUser.maxConcurrentTrades > 0 && activeContracts.length >= currentUser.maxConcurrentTrades) {
+      triggerToast(`Maximum open trades reached (Limit: ${currentUser.maxConcurrentTrades}).`, false);
       return;
     }
 
@@ -2515,67 +2553,7 @@ export default function App() {
     const stopLossNum = parseFloat(stopLossText);
     const stopLoss = (!isNaN(stopLossNum) && stopLossNum > 0) ? stopLossNum : undefined;
 
-    if (spotType === 'limit') {
-      const limitPriceNum = parseFloat(String(spotPriceLimit));
-      if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
-        triggerToast("Please input a valid Limit Price.", false);
-        return;
-      }
-
-      const newOrder: PendingLimitOrder = {
-        id: `lim-${Math.random().toString(36).substring(2, 12)}`,
-        assetId: activeAsset.id,
-        assetName: activeAsset.name,
-        assetSymbol: activeAsset.symbol,
-        direction,
-        stake: calculatedStake,
-        duration: spotDuration,
-        durationUnit: spotDurationUnit,
-        limitPrice: limitPriceNum,
-        stopLoss,
-        createdAt: getServerTime()
-      };
-
-      // Deduct balance instantly
-      setAccount((prev) => ({ ...prev, balance: prev.balance - calculatedStake }));
-      if (account.mode === 'real') {
-        setRealAccountBalance((prev) => Math.max(0, prev - calculatedStake));
-      }
-
-      // Synchronize with server balance
-      if (currentUser) {
-        const isDemo = account.mode === 'demo';
-        fetch('/api/users/update-balance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            amount: -calculatedStake,
-            isDemo
-          })
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.success) {
-            setAccount((prev) => ({ ...prev, balance: data.balance }));
-            if (!isDemo) {
-              setRealAccountBalance(data.balance);
-            }
-            setCurrentUser((prevUser: any) => {
-              if (!prevUser) return null;
-              const updated = { ...prevUser, balance: data.balance };
-              localStorage.setItem('lwex_current_user', JSON.stringify(updated));
-              return updated;
-            });
-          }
-        })
-        .catch(err => console.error('Failed to sync balance on limit order placement:', err));
-      }
-
-      setPendingLimitOrders((prev) => [...prev, newOrder]);
-      triggerToast(`Limit Order Placed: Execution scheduled when ${activeAsset.symbol} covers $${limitPriceNum.toFixed(4)}.`, true);
-    } else {
-      // Market order
+    // Market order
       handlePurchaseContract({
         type: 'rise-fall',
         direction: direction === 'buy' ? 'rise' : 'fall',
@@ -2584,8 +2562,7 @@ export default function App() {
         durationUnit: spotDurationUnit,
         stopLoss
       });
-    }
-  };
+    };
 
   const handleCancelPendingLimitOrder = (orderId: string) => {
     const order = pendingLimitOrders.find(o => o.id === orderId);
