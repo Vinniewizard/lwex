@@ -4239,6 +4239,7 @@ export default function App() {
         isOpen={isCopilotOpen}
         onClose={() => setIsCopilotOpen(false)}
         currentUser={currentUser}
+        tradeHistory={tradeHistory}
         onTriggerAuth={handleTriggerAuth}
         triggerToast={triggerToast}
       />

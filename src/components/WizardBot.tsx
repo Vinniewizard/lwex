@@ -27,7 +27,7 @@ import {
   MessageSquare,
   Pin
 } from 'lucide-react';
-import { Asset, Tick, CopilotMessage, IndicatorConfig } from '../types';
+import { Asset, Tick, CopilotMessage, IndicatorConfig, TradeHistoryItem } from '../types';
 
 interface CopilotProps {
   theme?: 'dark' | 'light';
@@ -37,6 +37,7 @@ interface CopilotProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser?: any;
+  tradeHistory: TradeHistoryItem[];
   onTriggerAuth?: (tab: 'login' | 'register') => void;
   triggerToast?: (text: string, success: boolean) => void;
 }
@@ -73,9 +74,35 @@ export default function WizardBot({
   isOpen,
   onClose,
   currentUser,
+  tradeHistory,
   onTriggerAuth,
   triggerToast
 }: CopilotProps) {
+  // Periodic disbursement announcements
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const interval = setInterval(() => {
+      // Find won trades in the last few minutes, or just pick recent ones
+      const recentWins = tradeHistory.filter(h => h.status === 'won').slice(-5);
+      
+      if (recentWins.length > 0) {
+        const randomWin = recentWins[Math.floor(Math.random() * recentWins.length)];
+        const msgText = `<b>DISBURSEMENT ALERT</b>\n\nPayment successfully sent to user <b>${currentUser?.fullName || 'LWEX Member 928'}</b>\n\nAsset: ${randomWin.assetSymbol}\nProfit: <b>$${randomWin.profit.toFixed(2)}</b>\nMethod: USDT-TRC20\nStatus: Settled ✅`;
+        
+        // Push this log into the Telegram simulator
+        setTgLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'Telegram API',
+          text: msgText,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    }, 60000); // 1 minute interval for demonstration
+
+    return () => clearInterval(interval);
+  }, [isOpen, tradeHistory]);
+
   const isAdmin = currentUser?.email === 'admin@lwex.com' ||
                   currentUser?.email === 'peterchristine' ||
                   currentUser?.email === 'lucasantiago';
