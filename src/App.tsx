@@ -322,9 +322,9 @@ export default function App() {
 
   // Asset configurations
   const [activeAsset, setActiveAsset] = useState<Asset>(() => {
-    // Try to start on a major crypto asset or falls back
-    const btc = ASSETSList.find(a => a.symbol.includes('BTC') || a.id.includes('BTC'));
-    return btc || ASSETSList[0];
+    // Start TFLUX by default
+    const tflux = ASSETSList.find(a => a.symbol === 'TFLUX');
+    return tflux || ASSETSList[0];
   });
   const [assetsRegistry, setAssetsRegistry] = useState<Asset[]>(ASSETSList);
   const [assetsTicksMap, setAssetsTicksMap] = useState<Record<string, Tick[]>>(() => {
