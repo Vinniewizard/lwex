@@ -3616,7 +3616,7 @@ export default function App() {
                 {/* Panel Title & Type Selector */}
                 <div className="space-y-3 shrink-0">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-905">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Terminal Trade Box</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-white">Live Execution Terminal</span>
                     <span className="text-[10px] text-emerald-500 font-mono font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded animate-pulse">
                       Live Markets
                     </span>
