@@ -73,10 +73,44 @@ export default function PositionsList({
     .filter(c => c.purchaseTime > thirtyDaysAgo)
     .reduce((sum, item) => sum + item.stake, 0);
 
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    
+    const touchEndX = e.changedTouches[0].clientX;
+    const deltaX = touchEndX - touchStartX;
+    const threshold = 50;
+
+    if (Math.abs(deltaX) > threshold) {
+      const tabs: ('positions' | 'statements' | 'stats')[] = ['positions', 'statements', 'stats'];
+      const currentIndex = tabs.indexOf(activeTab);
+
+      if (deltaX > 0) {
+        // Swipe Right: Previous tab
+        const nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        onChangeTab(tabs[nextIndex]);
+      } else {
+        // Swipe Left: Next tab
+        const nextIndex = (currentIndex + 1) % tabs.length;
+        onChangeTab(tabs[nextIndex]);
+      }
+    }
+    setTouchStartX(null);
+  };
+
   return (
-    <div className={`flex flex-col rounded-xl border overflow-hidden shadow-sm flex-1 transition-colors ${
-      isDark ? 'border-slate-800 bg-slate-900/50 backdrop-blur-md text-white' : 'border-gray-200/60 bg-white text-black'
-    }`}>
+    <div 
+      className={`flex flex-col rounded-xl border overflow-hidden shadow-sm flex-1 transition-colors ${
+        isDark ? 'border-slate-800 bg-slate-900/50 backdrop-blur-md text-white' : 'border-gray-200/60 bg-white text-black'
+      }`}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Tab navigators */}
       <div className={`flex h-12 items-center justify-between border-b px-4 ${
         isDark ? 'border-slate-800 bg-slate-950/60' : 'border-gray-100 bg-white'
