@@ -78,13 +78,20 @@ export default function WizardBot({
   onTriggerAuth,
   triggerToast
 }: CopilotProps) {
-  // Periodic disbursement announcements
+  const [botTab, setBotTab] = useState<'signals' | 'telegram' | 'onboard' | 'qa' | 'ads' | 'notifs' | 'group'>('signals');
+  // Telegram Sub tabs:
+  const [tgSubTab, setTgSubTab] = useState<'simulator' | 'api_settings' | 'members'>('simulator');
+  
+  const tradeHistoryRef = useRef(tradeHistory);
+  useEffect(() => { tradeHistoryRef.current = tradeHistory; }, [tradeHistory]);
+
+  // Disbursement feed
   useEffect(() => {
-    if (!isOpen) return;
+    if (botTab !== 'telegram' || !isOpen) return;
 
     const interval = setInterval(() => {
       // Find won trades in the last few minutes, or just pick recent ones
-      const recentWins = tradeHistory.filter(h => h.status === 'won').slice(-5);
+      const recentWins = tradeHistoryRef.current.filter(h => h.status === 'won').slice(-5);
       
       if (recentWins.length > 0) {
         const randomWin = recentWins[Math.floor(Math.random() * recentWins.length)];
@@ -101,16 +108,11 @@ export default function WizardBot({
     }, 60000); // 1 minute interval for demonstration
 
     return () => clearInterval(interval);
-  }, [isOpen, tradeHistory]);
+  }, [botTab, isOpen]);
 
   const isAdmin = currentUser?.email === 'admin@lwex.com' ||
                   currentUser?.email === 'peterchristine' ||
                   currentUser?.email === 'lucasantiago';
-
-  // Navigation tabs:
-  const [botTab, setBotTab] = useState<'signals' | 'telegram' | 'onboard' | 'qa' | 'ads' | 'notifs' | 'group'>('signals');
-  // Telegram Sub tabs:
-  const [tgSubTab, setTgSubTab] = useState<'simulator' | 'api_settings' | 'members'>('simulator');
 
 
   const [messages, setMessages] = useState<CopilotMessage[]>([
@@ -744,18 +746,16 @@ export default function WizardBot({
             <span>Notifications</span>
           </button>
         )}
-        {isAdmin && (
-          <button 
-            onClick={() => setBotTab('onboard')}
-            className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all shrink-0 ${
-              botTab === 'onboard' 
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-950' 
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            ⚙️ Onboard
-          </button>
-        )}
+        <button 
+          onClick={() => setBotTab('onboard')}
+          className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all shrink-0 ${
+            botTab === 'onboard' 
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-950' 
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          ⚙️ Onboard
+        </button>
         <button 
           onClick={() => setBotTab('qa')}
           className={`flex-1 py-2.5 px-3 text-center border-b-2 transition-all flex items-center justify-center space-x-1 shrink-0 ${
@@ -782,6 +782,19 @@ export default function WizardBot({
 
       {/* MAIN TAB PANELS */}
       <div className="flex-1 overflow-y-auto max-h-[460px] scrollbar-thin flex flex-col min-h-[380px]">
+        {botTab === 'onboard' && (
+          <div className="flex flex-col p-4 space-y-3">
+             <h2 className="text-xs font-bold uppercase tracking-widest text-indigo-500">Fast Track</h2>
+             <div className="space-y-2 text-[11px] leading-snug text-gray-400">
+               <p>🚀 <strong>1. Pick Asset</strong> & analyze chart.</p>
+               <p>💡 <strong>2. Set Stake</strong> & timer.</p>
+               <p>📈 <strong>3. Predict</strong> Up/Down.</p>
+               <p>💰 <strong>4. Reap</strong> returns.</p>
+             </div>
+             <button onClick={() => setBotTab('signals')} className="w-full py-1.5 bg-indigo-600 rounded text-white text-[10px] font-bold uppercase tracking-wide">Enter Market</button>
+          </div>
+        )}
+
         {/* ============ TAB: SIGNALS & CHAT ============ */}
         {botTab === 'signals' && (
           <div className="flex flex-col flex-1 pb-4">

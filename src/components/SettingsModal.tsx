@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, User, Settings as SettingsIcon, Shield, CreditCard, LogOut, Clock, Globe, Phone as PhoneIcon, Edit2, Check, Mail, Lock, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Account } from '../types';
 
@@ -20,6 +20,44 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
   const [isEditingEmail, setIsEditingEmail] = React.useState(false);
   const [emailInput, setEmailInput] = React.useState('');
   const [emailError, setEmailError] = React.useState('');
+  
+  const [tradeSettlement, setTradeSettlement] = React.useState(currentUser?.notifSettings?.tradeSettlement ?? true);
+  const [balanceUpdate, setBalanceUpdate] = React.useState(currentUser?.notifSettings?.balanceUpdate ?? true);
+  const [promotion, setPromotion] = React.useState(currentUser?.notifSettings?.promotion ?? false);
+  const [broadcastFrequency, setBroadcastFrequency] = React.useState(currentUser?.notifSettings?.broadcastFrequency ?? '1h');
+  const isAdmin = currentUser?.email === 'admin@lwex.com' ||
+                  currentUser?.email === 'peterchristine' ||
+                  currentUser?.email === 'lucasantiago';
+
+  const [activeSettingsTab, setActiveSettingsTab] = useState('profile');
+  
+  const [demoModeEnabled, setDemoModeEnabled] = useState(
+    JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true')
+  );
+  const [realModeEnabled, setRealModeEnabled] = useState(
+    JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true')
+  );
+
+  const saveNotifSettings = () => {
+    if (currentUser && onUpdateUser) {
+      const updatedUser = {
+        ...currentUser,
+        notifSettings: { tradeSettlement, balanceUpdate, promotion, broadcastFrequency }
+      };
+      
+      const users = JSON.parse(localStorage.getItem('lwex_users') || '[]');
+      const updatedUsers = users.map((u: any) => u.email === currentUser.email ? updatedUser : u);
+      localStorage.setItem('lwex_users', JSON.stringify(updatedUsers));
+      onUpdateUser(updatedUser);
+    }
+  };
+
+  const saveAdminSettings = (demo: boolean, real: boolean) => {
+    localStorage.setItem('lwex_admin_demo_enabled', JSON.stringify(demo));
+    localStorage.setItem('lwex_admin_real_enabled', JSON.stringify(real));
+    setDemoModeEnabled(demo);
+    setRealModeEnabled(real);
+  };
 
   const [docType, setDocType] = React.useState('National ID');
   const [docNum, setDocNum] = React.useState('');
@@ -154,27 +192,72 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
         </div>
 
         <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh]">
-          {/* User Identity Card */}
-          <div className={`rounded-xl p-5 border ${isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-gray-50/50 border-gray-100'}`}>
-            <div className="flex items-center space-x-4">
-              <div className="h-14 w-14 rounded-full bg-black flex items-center justify-center text-white text-xl font-black">
-                {account.mode === 'demo' ? 'D' : 'R'}
+          {/* Tabs */}
+          <div className="flex space-x-2 border-b border-zinc-800 pb-2">
+            <button onClick={() => setActiveSettingsTab('profile')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'profile' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Profile</button>
+            <button onClick={() => setActiveSettingsTab('notifications')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'notifications' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Notifications</button>
+            {isAdmin && <button onClick={() => setActiveSettingsTab('admin')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'admin' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Admin</button>}
+          </div>
+
+          {activeSettingsTab === 'notifications' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Trade Settlement Notifications</span>
+                <input type="checkbox" checked={tradeSettlement} onChange={(e) => { setTradeSettlement(e.target.checked); saveNotifSettings(); }} />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-sm">{currentUser?.email || 'LWEX Client'}</h3>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border ${
-                    account.mode === 'real' 
-                      ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
-                      : 'bg-green-500/10 text-green-500 border-green-500/20'
-                  }`}>
-                    {account.mode === 'real' ? 'Verified Live' : 'Demo Node'}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 font-mono mt-0.5">{currentUser ? 'Logged In' : 'CR198273645'}</p>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Balance Update Notifications</span>
+                <input type="checkbox" checked={balanceUpdate} onChange={(e) => { setBalanceUpdate(e.target.checked); saveNotifSettings(); }} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Promotion Notifications</span>
+                <input type="checkbox" checked={promotion} onChange={(e) => { setPromotion(e.target.checked); saveNotifSettings(); }} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-zinc-500">Broadcast Frequency</label>
+                <select value={broadcastFrequency} onChange={(e) => { setBroadcastFrequency(e.target.value); saveNotifSettings(); }} className="w-full p-2 bg-zinc-800 rounded">
+                  <option value="realtime">Realtime</option>
+                  <option value="30m">Every 30m</option>
+                  <option value="1h">Every 1h</option>
+                </select>
               </div>
             </div>
-          </div>
+          ) : activeSettingsTab === 'admin' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Enable Demo Mode</span>
+                <input type="checkbox" checked={demoModeEnabled} onChange={(e) => saveAdminSettings(e.target.checked, realModeEnabled)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Enable Real Mode</span>
+                <input type="checkbox" checked={realModeEnabled} onChange={(e) => saveAdminSettings(demoModeEnabled, e.target.checked)} />
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* User Identity Card */}
+              <div className={`rounded-xl p-5 border ${isDark ? 'bg-zinc-900/40 border-zinc-800' : 'bg-gray-50/50 border-gray-100'}`}>
+                <div className="flex items-center space-x-4">
+                  <div className="h-14 w-14 rounded-full bg-black flex items-center justify-center text-white text-xl font-black">
+                    {account.mode === 'demo' ? 'D' : 'R'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-sm">{currentUser?.email || 'LWEX Client'}</h3>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border ${
+                        account.mode === 'real' 
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                          : 'bg-green-500/10 text-green-500 border-green-500/20'
+                      }`}>
+                        {account.mode === 'real' ? 'Verified Live' : 'Demo Node'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 font-mono mt-0.5">{currentUser ? 'Logged In' : 'CR198273645'}</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* User Details Settings */}
           {currentUser && (

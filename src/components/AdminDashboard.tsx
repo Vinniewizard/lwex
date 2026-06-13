@@ -131,6 +131,12 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     payoutRate: 95.5
   });
   const [isGameLoading, setIsGameLoading] = useState(false);
+  const [demoModeEnabled, setDemoModeEnabled] = useState(
+    JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true')
+  );
+  const [realModeEnabled, setRealModeEnabled] = useState(
+    JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true')
+  );
   const [editingUser, setEditingUser] = useState<User & { newPassword?: string } | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userFilterStatus, setUserFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
@@ -1751,6 +1757,38 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                     </h3>
                     
                     <form onSubmit={handleUpdateGameSettings} className="space-y-6">
+                      <div className="space-y-4 pb-4 border-b border-slate-800">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Platform Visibility</h4>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-300">Enable Demo Mode</label>
+                          <input 
+                            type="checkbox" 
+                            checked={demoModeEnabled}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setDemoModeEnabled(checked);
+                              localStorage.setItem('lwex_admin_demo_enabled', JSON.stringify(checked));
+                              window.dispatchEvent(new Event('lwex-settings-changed'));
+                            }}
+                            className="w-4 h-4 rounded accent-indigo-600"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-300">Enable Real Mode</label>
+                          <input 
+                            type="checkbox" 
+                            checked={realModeEnabled}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setRealModeEnabled(checked);
+                              localStorage.setItem('lwex_admin_real_enabled', JSON.stringify(checked));
+                              window.dispatchEvent(new Event('lwex-settings-changed'));
+                            }}
+                            className="w-4 h-4 rounded accent-indigo-600"
+                          />
+                        </div>
+                      </div>
+                      
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <label className="text-xs font-bold uppercase text-slate-400">Market Bias (Trend)</label>

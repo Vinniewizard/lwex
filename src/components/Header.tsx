@@ -84,7 +84,23 @@ export default function Header({
     return bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const isDark = theme === 'dark';
+  const [isDark, setIsDark] = useState(theme === 'dark');
+  const [demoModeEnabled, setDemoModeEnabled] = useState(() => JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true'));
+  const [realModeEnabled, setRealModeEnabled] = useState(() => JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true'));
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setDemoModeEnabled(JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true'));
+      setRealModeEnabled(JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true'));
+    };
+
+    window.addEventListener('lwex-settings-changed', handleStorageChange);
+    return () => window.removeEventListener('lwex-settings-changed', handleStorageChange);
+  }, []);
+
+  useEffect(() => {
+     setIsDark(theme === 'dark');
+  }, [theme]);
 
   return (
     <header className={`fixed top-0 left-0 right-0 z-50 w-full flex flex-col transition-all duration-300 backdrop-blur-md border-b ${
@@ -118,66 +134,72 @@ export default function Header({
         </div>
 
         {/* Dynamic & Smart Account Mode Switcher (Visible & Tactile Toggle) */}
-        <div className={`flex items-center p-1 rounded-full transition-all duration-300 shadow-inner ${
-          isDark 
-            ? 'bg-slate-950 border border-slate-850' 
-            : 'bg-slate-100 border border-slate-200'
-        } select-none font-sans`}>
-          
-          {/* Demo account select option */}
-          <button
-            onClick={() => onSwitchAccount('demo')}
-            className={`relative px-2 py-1 md:px-3 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
-              account.mode === 'demo'
-                ? isDark
-                  ? 'bg-yellow-500/15 text-yellow-400 shadow-[0_0_10px_rgba(20,184,166,0.15)] border border-yellow-500/25'
-                  : 'bg-white text-emerald-600 shadow-sm border border-emerald-200'
-                : 'text-slate-400 hover:text-slate-350 border border-transparent font-medium'
-            }`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full transition-all flex-shrink-0 ${
-              account.mode === 'demo' ? 'bg-yellow-400 animate-pulse shadow-[0_0_6px_#2dd4bf]' : 'bg-slate-500'
-            }`} />
-            <span>Demo</span>
-
-            {/* Tap to reset Demo balance when active */}
-            {account.mode === 'demo' && (
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResetDemo();
-                }}
-                className="ml-1 rounded-full p-0.5 transition-all text-yellow-400 hover:bg-yellow-900/30 hover:text-white"
-                title="Replenish Demo Funds to $10,000"
+        {(demoModeEnabled || realModeEnabled || true) && (
+          <div className={`flex items-center p-1 rounded-full transition-all duration-300 shadow-inner ${
+            isDark 
+              ? 'bg-slate-950 border border-slate-850' 
+              : 'bg-slate-100 border border-slate-200'
+          } select-none font-sans`}>
+            
+            {/* Demo account select option */}
+            {demoModeEnabled && (
+              <button
+                onClick={() => onSwitchAccount('demo')}
+                className={`relative px-2 py-1 md:px-3 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
+                  account.mode === 'demo'
+                    ? isDark
+                      ? 'bg-yellow-500/15 text-yellow-400 shadow-[0_0_10px_rgba(20,184,166,0.15)] border border-yellow-500/25'
+                      : 'bg-white text-emerald-600 shadow-sm border border-emerald-200'
+                    : 'text-slate-400 hover:text-slate-350 border border-transparent font-medium'
+                }`}
               >
-                <RefreshCw className="h-2.5 w-2.5" />
-              </span>
-            )}
-          </button>
+                <span className={`h-1.5 w-1.5 rounded-full transition-all flex-shrink-0 ${
+                  account.mode === 'demo' ? 'bg-yellow-400 animate-pulse shadow-[0_0_6px_#2dd4bf]' : 'bg-slate-500'
+                }`} />
+                <span>Demo</span>
 
-          {/* Real account select option */}
-          <button
-            onClick={() => {
-              if (!currentUser && account.mode !== 'real') {
-                onOpenAuth();
-                return;
-              }
-              onSwitchAccount('real');
-            }}
-            className={`relative px-2.5 py-1 md:px-3.5 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
-              account.mode === 'real'
-                ? isDark
-                  ? 'bg-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)] border border-amber-500/30'
-                  : 'bg-amber-100 text-amber-800 shadow-sm border border-amber-200'
-                : 'text-slate-400 hover:text-slate-350 border border-transparent font-medium'
-            }`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full transition-all flex-shrink-0 ${
-              account.mode === 'real' ? 'bg-amber-500 animate-pulse shadow-[0_0_6px_#f59e0b]' : 'bg-slate-500'
-            }`} />
-            <span>Real</span>
-          </button>
-        </div>
+                {/* Tap to reset Demo balance when active */}
+                {account.mode === 'demo' && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onResetDemo();
+                    }}
+                    className="ml-1 rounded-full p-0.5 transition-all text-yellow-400 hover:bg-yellow-900/30 hover:text-white"
+                    title="Replenish Demo Funds to $10,000"
+                  >
+                    <RefreshCw className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Real account select option */}
+            {realModeEnabled && (
+              <button
+                onClick={() => {
+                  if (!currentUser && account.mode !== 'real') {
+                    onOpenAuth();
+                    return;
+                  }
+                  onSwitchAccount('real');
+                }}
+                className={`relative px-2.5 py-1 md:px-3.5 md:py-1.5 text-[9px] md:text-xs font-black tracking-wider uppercase transition-all duration-300 rounded-full flex items-center space-x-1 cursor-pointer ${
+                  account.mode === 'real'
+                    ? isDark
+                      ? 'bg-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)] border border-amber-500/30'
+                      : 'bg-amber-100 text-amber-800 shadow-sm border border-amber-200'
+                    : 'text-slate-400 hover:text-slate-350 border border-transparent font-medium'
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full transition-all flex-shrink-0 ${
+                  account.mode === 'real' ? 'bg-amber-500 animate-pulse shadow-[0_0_6px_#f59e0b]' : 'bg-slate-500'
+                }`} />
+                <span>Real</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Desktop Navigation System (Embedded directly in Top Deck on wider screens) */}
         <nav className="hidden md:flex items-center space-x-1 bg-slate-950/20 p-1 rounded-xl border border-slate-700/10">

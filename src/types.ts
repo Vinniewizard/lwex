@@ -1,3 +1,10 @@
+export interface NotificationSettings {
+  tradeSettlement: boolean;
+  balanceUpdate: boolean;
+  promotion: boolean;
+  broadcastFrequency: 'realtime' | '30m' | '1h';
+}
+
 export interface Asset {
   id: string;
   name: string;
