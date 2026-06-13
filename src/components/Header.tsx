@@ -134,7 +134,7 @@ export default function Header({
         </div>
 
         {/* Dynamic & Smart Account Mode Switcher (Visible & Tactile Toggle) */}
-        {(demoModeEnabled || realModeEnabled || true) && (
+        {(demoModeEnabled || realModeEnabled) && (
           <div className={`flex items-center p-1 rounded-full transition-all duration-300 shadow-inner ${
             isDark 
               ? 'bg-slate-950 border border-slate-850' 

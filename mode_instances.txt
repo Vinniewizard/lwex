@@ -1,0 +1,25 @@
+193:      mode: 'demo',
+310:        if (parsed && (parsed.mode === 'demo' || parsed.mode === 'real')) {
+459:      const currentMode = accountRef.current ? accountRef.current.mode : 'demo';
+856:      const isDemo = currentMode === 'demo';
+1073:              const nextBalance = prev.mode === 'demo' ? demoBal : realBal;
+1101:    const targetMode = currentUser ? account.mode : 'demo'; // Force guest to demo mode
+1191:      const targetBalance = targetMode === 'real' ? userRealBal : userDemoBal;
+1218:      if (currAcc.mode !== 'demo' || currAcc.balance !== 10000.00 || currAcc.id !== 'demo-temp-acc') {
+1221:          mode: 'demo',
+1296:    const currentMode = currentUser ? account.mode : 'demo';
+1446:              const freshBalance = prevAcc.mode === 'real' ? data.userOverride.realBalance : data.userOverride.demoBalance;
+1577:      if (prev.mode === 'demo') {
+1628:      // Session timeout is only for guests (unauthenticated) or active demo mode sessions
+1629:      const isDemoSessionActive = !currentUser || account.mode === 'demo';
+1727:  const handleSwitchAccount = (mode: 'demo' | 'real') => {
+1736:        return { ...prev, mode: 'demo', balance: prev.balance === 0 ? 10000.00 : prev.balance };
+1744:    if (account.mode !== 'demo') return;
+1753:      const isDemo = account.mode === 'demo';
+1818:            const targetMode = currentUserRef.current ? accountRef.current.mode : 'demo';
+1846:            if (accountRef.current.mode === 'demo') {
+2217:            const isDemo = currentMode === 'demo';
+2383:      const isDemo = account.mode === 'demo';
+2432:      const isDemo = account.mode === 'demo';
+2579:      const isDemo = account.mode === 'demo';
+3120:                  account.mode === 'demo'

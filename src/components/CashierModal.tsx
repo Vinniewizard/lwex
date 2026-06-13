@@ -792,31 +792,38 @@ export default function CashierModal({
 
             {/* Quick Presets Grid */}
             {(!depositAddress || activeTab === 'withdraw') && (
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-                {(() => {
-                  const minLimit = activeTab === 'deposit' ? (gameSettings?.minDeposit ?? 1) : (gameSettings?.minWithdrawal ?? 10);
-                  const rawPresets = activeTab === 'deposit' ? [10, 25, 100, 250] : [20, 50, 250, 1000];
-                  // Snap presets dynamically to at least the minimum, and keep them unique
-                  const uniquePresets = Array.from(new Set(rawPresets.map(preset => Math.max(minLimit, preset))));
-                  
-                  return uniquePresets.map((val) => (
-                    <button
-                      id={`cashier-preset-${val}`}
-                      type="button"
-                      key={val}
-                      onClick={() => handleAmountChange(val)}
-                      className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
-                        amount === val
-                          ? 'bg-yellow-500 text-slate-950 border-yellow-500'
-                          : theme === 'dark'
-                            ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
-                    >
-                      ${val}
-                    </button>
-                  ));
-                })()}
+              <div className="space-y-2">
+                {activeTab === 'deposit' && (
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">
+                    Suggested Deposit Amounts
+                  </label>
+                )}
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+                  {(() => {
+                    const minLimit = activeTab === 'deposit' ? (gameSettings?.minDeposit ?? 1) : (gameSettings?.minWithdrawal ?? 10);
+                    const rawPresets = activeTab === 'deposit' ? [50, 100, 500] : [20, 50, 250, 1000];
+                    // Snap presets dynamically to at least the minimum, and keep them unique
+                    const uniquePresets = Array.from(new Set(rawPresets.map(preset => Math.max(minLimit, preset))));
+                    
+                    return uniquePresets.map((val) => (
+                      <button
+                        id={`cashier-preset-${val}`}
+                        type="button"
+                        key={val}
+                        onClick={() => handleAmountChange(val)}
+                        className={`rounded border py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold transition-all cursor-pointer ${
+                          amount === val
+                            ? 'bg-yellow-500 text-slate-950 border-yellow-500'
+                            : theme === 'dark'
+                              ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-white'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        ${val}
+                      </button>
+                    ));
+                  })()}
+                </div>
               </div>
             )}
 

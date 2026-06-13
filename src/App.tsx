@@ -1724,7 +1724,32 @@ export default function App() {
   };
 
   // Switchees Demowrithe wallets
+  // Admin control: Demo/Real visibility
+  const [demoModeEnabled, setDemoModeEnabled] = useState(() => JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true'));
+  const [realModeEnabled, setRealModeEnabled] = useState(() => JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true'));
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setDemoModeEnabled(JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true'));
+      setRealModeEnabled(JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true'));
+    };
+
+    window.addEventListener('lwex-settings-changed', handleStorageChange);
+    return () => window.removeEventListener('lwex-settings-changed', handleStorageChange);
+  }, []);
+
+  // Auto-switch account mode if disabled by admin
+  useEffect(() => {
+    if (account.mode === 'demo' && !demoModeEnabled && realModeEnabled) {
+      handleSwitchAccount('real');
+    } else if (account.mode === 'real' && !realModeEnabled && demoModeEnabled) {
+      handleSwitchAccount('demo');
+    }
+  }, [demoModeEnabled, realModeEnabled, account.mode]);
+
   const handleSwitchAccount = (mode: 'demo' | 'real') => {
+    if (mode === 'demo' && !demoModeEnabled) return;
+    if (mode === 'real' && !realModeEnabled) return;
     if (mode === account.mode) return;
     setAccount((prev) => {
       if (mode === 'real') {
@@ -3114,28 +3139,32 @@ export default function App() {
           <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-1.5 sm:gap-3 lg:gap-4 md:border-none border-t pt-2 md:pt-0 border-slate-800/10">
             {/* Real vs Demo selector */}
             <div className={`flex items-center p-0.5 rounded-lg ${isDark ? 'bg-slate-950 border border-slate-900' : 'bg-slate-100 border border-slate-200'} shrink-0`}>
-              <button 
-                onClick={() => handleSwitchAccount('demo')}
-                className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase rounded-md tracking-wider transition-all cursor-pointer ${
-                  account.mode === 'demo'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-350 font-semibold'
-                }`}
-              >
-                <span className="xs:hidden">Demo</span>
-                <span className="hidden xs:inline">Demo Wallet</span>
-              </button>
-              <button 
-                onClick={() => handleSwitchAccount('real')}
-                className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase rounded-md tracking-wider transition-all cursor-pointer ${
-                  account.mode === 'real'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-350 font-semibold'
-                }`}
-              >
-                <span className="xs:hidden">Real</span>
-                <span className="hidden xs:inline">Real Wallet</span>
-              </button>
+              {demoModeEnabled && (
+                <button 
+                  onClick={() => handleSwitchAccount('demo')}
+                  className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase rounded-md tracking-wider transition-all cursor-pointer ${
+                    account.mode === 'demo'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-350 font-semibold'
+                  }`}
+                >
+                  <span className="xs:hidden">Demo</span>
+                  <span className="hidden xs:inline">Demo Wallet</span>
+                </button>
+              )}
+              {realModeEnabled && (
+                <button 
+                  onClick={() => handleSwitchAccount('real')}
+                  className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black uppercase rounded-md tracking-wider transition-all cursor-pointer ${
+                    account.mode === 'real'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-350 font-semibold'
+                  }`}
+                >
+                  <span className="xs:hidden">Real</span>
+                  <span className="hidden xs:inline">Real Wallet</span>
+                </button>
+              )}
             </div>
 
             {/* Quick Balance Readout Panel inside Header */}
