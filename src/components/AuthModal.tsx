@@ -89,6 +89,17 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
 
   if (!isOpen) return null;
 
+  const countryFormats: Record<string, { code: string; length: number }> = {
+    'Kenya': { code: '254', length: 12 },
+    'Uganda': { code: '256', length: 12 },
+    'Tanzania': { code: '255', length: 12 },
+    'Nigeria': { code: '234', length: 13 },
+    'South Africa': { code: '27', length: 11 },
+    'United States': { code: '1', length: 11 },
+    'United Kingdom': { code: '44', length: 12 },
+    'Germany': { code: '49', length: 12 },
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -96,11 +107,28 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
     
     if (view === 'register') {
       // Clean the phone number by removing spaces, hyphens, plus signs, and brackets
-      const cleanPhone = phone.replace(/[\s\-\+\(\)]/g, '');
-      if (!/^\d{9,15}$/.test(cleanPhone)) {
-        setFormError('Please enter a valid phone number (9 to 15 digits).');
-        setIsLoading(false);
-        return;
+      let cleanPhone = phone.replace(/[\s\-\+\(\)]/g, '');
+      
+      // Simple validation attempt
+      const format = countryFormats[country];
+      if (format) {
+        if (!cleanPhone.startsWith(format.code)) {
+          // If user didn't enter the country code at the start, prepend it
+          cleanPhone = format.code + cleanPhone;
+        }
+        
+        if (cleanPhone.length !== format.length) {
+          setFormError(`Please enter a valid phone number for ${country} (${format.length} digits required, incl. country code).`);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        // Fallback for Other
+        if (!/^\d{9,15}$/.test(cleanPhone)) {
+          setFormError('Please enter a valid phone number (9 to 15 digits).');
+          setIsLoading(false);
+          return;
+        }
       }
 
       const params = new URLSearchParams(window.location.search);
@@ -109,7 +137,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
       fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, phone, password, fullName: email.split('@')[0], country, referredBy })
+        body: JSON.stringify({ email, phone: cleanPhone, password, fullName: email.split('@')[0], country, referredBy })
       })
       .then(async (res) => {
         const data = await res.json();

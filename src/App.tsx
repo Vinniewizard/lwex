@@ -1740,12 +1740,14 @@ export default function App() {
 
   // Auto-switch account mode if disabled by admin
   useEffect(() => {
-    if (account.mode === 'demo' && !demoModeEnabled && realModeEnabled) {
+    const mode = accountRef.current.mode;
+    if (mode === 'demo' && !demoModeEnabled && realModeEnabled) {
       handleSwitchAccount('real');
-    } else if (account.mode === 'real' && !realModeEnabled && demoModeEnabled) {
+    } else if (mode === 'real' && !realModeEnabled && demoModeEnabled) {
       handleSwitchAccount('demo');
     }
-  }, [demoModeEnabled, realModeEnabled, account.mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoModeEnabled, realModeEnabled]);
 
   const handleSwitchAccount = (mode: 'demo' | 'real') => {
     if (mode === 'demo' && !demoModeEnabled) return;
