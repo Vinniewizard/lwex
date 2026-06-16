@@ -61,18 +61,20 @@ function getSqliteInstance() {
       );
     `);
 
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN force_outcome TEXT DEFAULT ''"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN profit_target REAL DEFAULT 0.00"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN max_win_limit REAL DEFAULT 0.00"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN max_loss_limit REAL DEFAULT 0.00"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN plain_password TEXT DEFAULT ''"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN verified_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_amount REAL DEFAULT 0.0"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE users ADD COLUMN first_deposit_promo_credited INTEGER DEFAULT 0"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN status TEXT DEFAULT 'pending'"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
-    try { rawDb.exec("ALTER TABLE app_settings ADD COLUMN game_settings TEXT DEFAULT '{}'"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS force_outcome TEXT DEFAULT ''"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profit_target REAL DEFAULT 0.00"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_win_limit REAL DEFAULT 0.00"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_loss_limit REAL DEFAULT 0.00"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT ''"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS registered_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS registered_bonus_amount REAL DEFAULT 0.0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_amount REAL DEFAULT 0.0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_promo_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Crypto'"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS game_settings TEXT DEFAULT '{}'"); } catch(e) {}
 
     rawDb.exec(`
       CREATE TABLE IF NOT EXISTS user_sessions (
@@ -1241,23 +1243,44 @@ Active technical indicator values: ${indicatorsString}.`}`;
       }
 
       // Safe bonus withdrawal condition checkpoint
-      if (user.verified_bonus_credited === 1 || user.first_deposit_bonus_credited === 1) {
+      if (user.verified_bonus_credited === 1 || user.first_deposit_bonus_credited === 1 || user.registered_bonus_credited === 1) {
+        let totalDeposits = 0;
+        try {
+          const deposits = await db.prepare("SELECT amount FROM credited_deposits WHERE user_id = ?").bind(user.id).all();
+          totalDeposits = (deposits.results as any[] || []).reduce((acc, d) => acc + d.amount, 0);
+        } catch(e) {}
+
         const userState = await db.prepare("SELECT trade_history FROM user_states WHERE user_id = ? AND mode = 'real'").bind(user.id).first();
+        let totalTradesCount = 0;
         let wonTradesCount = 0;
         if (userState && userState.trade_history) {
           try {
             const parsedHistory = JSON.parse(userState.trade_history);
+            totalTradesCount = Array.isArray(parsedHistory) ? parsedHistory.length : 0;
             wonTradesCount = parsedHistory.filter((t: any) => t.status === 'won').length;
           } catch (e) {
             console.warn("[WITHDRAWAL CHECK] Failed to parse trade history string:", e);
           }
         }
 
-        if (wonTradesCount < 10) {
-          return res.status(400).json({
-            success: false,
-            message: `Your account includes active promotional bonuses. To authorize withdrawals of your main balance and match credits, you need 10 successful trades (wins with no early cashouts) in Real Mode. Current status: ${wonTradesCount}/10 wins completed.`
-          });
+        // New registration bonus condition: Deposit >= $20 AND >= 5 total trades
+        if (user.registered_bonus_credited === 1) {
+             if (totalDeposits < 20 || totalTradesCount < 5) {
+                return res.status(400).json({
+                    success: false,
+                    message: `To withdraw bonus funds, you must deposit at least $20 (Total deposited: $${totalDeposits.toFixed(2)}) and make at least 5 trades (Total trades: ${totalTradesCount}).`
+                });
+             }
+        }
+
+        // Existing bonus condition
+        if (user.verified_bonus_credited === 1 || user.first_deposit_bonus_credited === 1) {
+          if (wonTradesCount < 10) {
+            return res.status(400).json({
+              success: false,
+              message: `Your account includes active promotional bonuses. To authorize withdrawals of your main balance and match credits, you need 10 successful trades (wins with no early cashouts) in Real Mode. Current status: ${wonTradesCount}/10 wins completed.`
+            });
+          }
         }
       }
 
@@ -1870,7 +1893,12 @@ Active technical indicator values: ${indicatorsString}.`}`;
       await db.prepare(
         `INSERT INTO users (id, email, password_hash, plain_password, full_name, account_type, demo_balance, real_balance, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(userId, email, passwordHash, password, fullName || 'User', 'demo', 10000.0, 0.0, now, now).run();
+      ).bind(userId, email, passwordHash, password, fullName || 'User', 'demo', 10000.0, 10.0, now, now).run();
+
+      // Apply registration bonus
+      await db.prepare('UPDATE users SET registered_bonus_credited = 1, registered_bonus_amount = 10.0 WHERE id = ?')
+        .bind(userId)
+        .run();
 
       await db.prepare(
         `INSERT INTO user_profiles (user_id, phone, country, verification_status, two_factor_enabled, created_at, updated_at)

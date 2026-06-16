@@ -181,20 +181,32 @@ export default function App() {
 
   const [account, setAccount] = useState<Account>(() => {
     const saved = localStorage.getItem('lwex_account');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse account from storage', e);
-      }
-    }
-    // Default logged-out visitor demo account configuration
-    return {
+    let initialState: Account = {
       mode: 'demo',
       balance: 10000.00,
       currency: 'USD',
       id: 'demo-temp-acc'
     };
+    
+    if (saved) {
+      try {
+        initialState = JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse account from storage', e);
+      }
+    }
+
+    // Enforce admin constraints on initial load
+    const demoEnabled = JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true');
+    const realEnabled = JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true');
+
+    if (initialState.mode === 'demo' && !demoEnabled && realEnabled) {
+        return { ...initialState, mode: 'real' };
+    } else if (initialState.mode === 'real' && !realEnabled && demoEnabled) {
+        return { ...initialState, mode: 'demo' };
+    }
+
+    return initialState;
   });
 
   const [realAccountBalance, setRealAccountBalance] = useState<number>(() => {
@@ -2296,14 +2308,39 @@ export default function App() {
   }, []);
 
   const handleUserUpdate = (user: any) => {
-    // Clear storage on user switch to ensure fresh state
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('lwex_') && key !== 'lwex_version') localStorage.removeItem(key);
-    });
+    // Only clear user-specific storage on user switch
+    ['lwex_account', 'lwex_current_user', 'lwex_trade_history'].forEach(key => localStorage.removeItem(key));
+    
     if (user) {
       localStorage.setItem('lwex_current_user', JSON.stringify(user));
     }
     setCurrentUser(user);
+
+    // Enforce admin constraints on auth change
+    const demoEnabled = JSON.parse(localStorage.getItem('lwex_admin_demo_enabled') ?? 'true');
+    const realEnabled = JSON.parse(localStorage.getItem('lwex_admin_real_enabled') ?? 'true');
+
+    setAccount(prev => {
+      let nextMode = prev.mode;
+      if (nextMode === 'demo' && !demoEnabled && realEnabled) {
+        nextMode = 'real';
+      } else if (nextMode === 'real' && !realEnabled && demoEnabled) {
+        nextMode = 'demo';
+      }
+
+      if (nextMode !== prev.mode) {
+        // Balance switch logic
+        if (nextMode === 'real') {
+          // This side-effect must be handled carefully outside, or just use another state update setter if possible
+          // For now, let's keep it simple.
+          return { ...prev, mode: 'real', balance: realAccountBalance };
+        } else {
+          setRealAccountBalance(prev.balance);
+          return { ...prev, mode: 'demo', balance: prev.balance === 0 ? 10000.00 : prev.balance };
+        }
+      }
+      return prev;
+    });
   };
     
   const handleLogout = () => {
