@@ -68,6 +68,7 @@ function getSqliteInstance() {
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT DEFAULT ''"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS registered_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
+    try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS registered_bonus_amount REAL DEFAULT 0.0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_bonus_credited INTEGER DEFAULT 0"); } catch(e) {}
     try { rawDb.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_deposit_amount REAL DEFAULT 0.0"); } catch(e) {}
@@ -1915,6 +1916,12 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
           const countRes = await db.prepare('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?').bind(referrer.id).first();
           if (countRes && countRes.count === 10) {
+            // Credit $20 bonus
+            const referrerUser = await db.prepare('SELECT referral_bonus_credited FROM users WHERE id = ?').bind(referrer.id).first();
+            if (referrerUser && referrerUser.referral_bonus_credited === 0) {
+              await db.prepare('UPDATE users SET real_balance = real_balance + 20.0, referral_bonus_credited = 1 WHERE id = ?').bind(referrer.id).run();
+            }
+
             if (telegramConfig.botToken && telegramConfig.groupChatId) {
               const guideText = `🔥 <b>MILESTONE UNLOCKED!</b> 🔥\n\nA member just reached 10 referrals!\n\n<b>📚 NEW MEMBER WELCOME GUIDE:</b>\n1. Sign up on our platform to get a $10k Practice Account.\n2. Access live AI signals from Wizard Bot.\n3. Make your first deposit to switch to REAL mode and withdraw earnings directly to M-Pesa.\n\n🔗 Let's grow together: https://lwex.onrender.com/`;
               

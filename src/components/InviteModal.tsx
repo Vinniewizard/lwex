@@ -13,6 +13,7 @@ export default function InviteModal({ isOpen, onClose, currentUser, theme, trigg
   const [copied, setCopied] = useState(false);
   const [fbUrl, setFbUrl] = useState('');
   const [isFbLinked, setIsFbLinked] = useState(false);
+  const [isBonusInfoOpen, setIsBonusInfoOpen] = useState(false);
   const isDark = theme === 'dark';
 
   if (!isOpen) return null;
@@ -47,6 +48,24 @@ export default function InviteModal({ isOpen, onClose, currentUser, theme, trigg
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 transition-all backdrop-blur-sm">
+      {/* Bonus Info Modal */}
+      {isBonusInfoOpen && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-2xl border p-6 shadow-2xl relative ${isDark ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-200'}`}>
+            <h3 className="text-lg font-black mb-4">How to Earn Your $20 Bonus</h3>
+            <p className={`text-sm mb-6 ${isDark ? 'text-zinc-300' : 'text-gray-600'}`}>
+              Invite 10 friends to register successfully on LWEX using your referral link. Once 10 users have completed their registration, an additional <span className="font-bold text-emerald-500">$20 bonus</span> will be credited to your real balance automatically!
+            </p>
+            <button 
+              onClick={() => setIsBonusInfoOpen(false)}
+              className="w-full bg-amber-500 text-slate-900 font-black py-2 rounded-lg"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className={`w-full max-w-xl rounded-2xl border p-0 shadow-2xl relative overflow-hidden flex flex-col ${
         isDark ? 'bg-zinc-950 border-zinc-800 text-white' : 'bg-white border-gray-150 text-black'
       }`}>
@@ -56,19 +75,28 @@ export default function InviteModal({ isOpen, onClose, currentUser, theme, trigg
           <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
             <Gift className="w-32 h-32 text-amber-500 animate-pulse" />
           </div>
-          <div className="flex items-center space-x-3">
-            <div className="h-11 w-11 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
-              <Gift className="h-5 w-5 text-slate-950 font-black animate-bounce" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-base font-black tracking-tight text-white">Affiliate Scheme</h2>
-                <span className="text-[8px] bg-rose-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase animate-pulse">HOT</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="h-11 w-11 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+                <Gift className="h-5 w-5 text-slate-950 font-black animate-bounce" />
               </div>
-              <p className="text-[10px] text-amber-500 font-mono uppercase font-bold tracking-widest leading-none mt-1">
-                Share & Earn 50% Flat Referral Commissions
-              </p>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-base font-black tracking-tight text-white">Affiliate Scheme</h2>
+                  <span className="text-[8px] bg-rose-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase animate-pulse">HOT</span>
+                </div>
+                <p className="text-[10px] text-amber-500 font-mono uppercase font-bold tracking-widest leading-none mt-1">
+                  Share & Earn 50% Flat Referral Commissions
+                </p>
+              </div>
             </div>
+            
+            <button 
+              onClick={() => setIsBonusInfoOpen(true)}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold px-3 py-1.5 rounded-lg text-[10px] border border-amber-500/50"
+            >
+              Bonus Info
+            </button>
           </div>
           <button
             onClick={onClose}
