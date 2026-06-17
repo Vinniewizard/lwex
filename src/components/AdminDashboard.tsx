@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { X, Users, TrendingUp, DollarSign, ArrowDownCircle, BarChart2, Pin, PinOff, MessageSquare, Settings, Clock, Trash, Sparkles, Search, Globe } from 'lucide-react';
+import { AdminWhatsAppManager } from './AdminWhatsAppManager';
+import { AdminFacebookBotManager } from './AdminFacebookBotManager';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -171,6 +173,42 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     templateAlert?: string;
     templateSignal?: string;
   } | null>(null);
+
+  // WhatsApp Config
+  const [whatsappConfig, setWhatsappConfig] = useState<{
+    enabled: boolean;
+    groups: { id: number; link: string }[];
+    autoBroadcastEnabled: boolean;
+    broadcastIntervalMinutes: number;
+    broadcastMessage: string;
+  }>({
+    enabled: false,
+    groups: [{ id: Date.now(), link: 'https://chat.whatsapp.com/EmKVrpIlK8mC1nawFSPtsI?s=cl&p=a&mlu=4&amv=1' }],
+    autoBroadcastEnabled: false,
+    broadcastIntervalMinutes: 60,
+    broadcastMessage: 'Welcome to LWEX! Join our community trading signals here: {LINK}',
+  });
+
+  // Facebook Config
+  const [fbBotConfig, setFbBotConfig] = useState<{
+    enabled: boolean;
+    autoInviteEnabled: boolean;
+    targetAudienceKeyword: string;
+    responseDelaySeconds: number;
+    targetGroups: { id: number; url: string }[];
+    broadcastEnabled: boolean;
+    broadcastMessage: string;
+  }>({
+    enabled: false,
+    autoInviteEnabled: false,
+    targetAudienceKeyword: 'trading',
+    responseDelaySeconds: 5,
+    targetGroups: [{ id: Date.now(), url: '' }],
+    broadcastEnabled: false,
+    broadcastMessage: '',
+  });
+
+  const [botSubTab, setBotSubTab] = useState<'telegram' | 'whatsapp' | 'facebook'>('telegram');
   const [isPinning, setIsPinning] = useState(false);
   const [isSavingTgConfig, setIsSavingTgConfig] = useState(false);
   const [customBroadcast, setCustomBroadcast] = useState('');
@@ -2098,267 +2136,211 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
 
               {activeTab === 'telegram' && (
                 <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
-                    <div>
-                      <h3 className="text-lg font-bold">Telegram Automation & Group Controls</h3>
-                      <p className="text-xs text-slate-500">Manage automated simulated chatbot signal dispatches, scheduled campaigns and target hunter groups sweeps.</p>
-                    </div>
-                    {/* MASTER TOGGLE BUTTON FOR CHATBOT DISPATCH & SCHEDULERS */}
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const nextState = !telegramConfig?.autoSimulateIntervalEnabled;
-                        setTelegramConfig(prev => prev ? { ...prev, autoSimulateIntervalEnabled: nextState } : prev);
-                        try {
-                          const res = await fetch('/api/telegram/config', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ autoSimulateIntervalEnabled: nextState })
-                          });
-                          if (res.ok) {
-                            triggerToast(nextState ? '🟢 Bot broadcasts resumed successfully!' : '🔴 Bot broadcasts STOPPED on the group.', true);
-                          } else {
-                            triggerToast('Failed to update bot transmission state', false);
-                          }
-                        } catch (e) {
-                          triggerToast('Error saving telegram config state', false);
-                        }
-                      }}
-                      className={`px-4 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 border-none transition-all cursor-pointer shadow-sm select-none ${
-                        telegramConfig?.autoSimulateIntervalEnabled 
-                          ? 'bg-red-600 hover:bg-red-700 text-white' 
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
-                    >
-                      {telegramConfig?.autoSimulateIntervalEnabled ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                          🔴 Stop Bot Messages & Notifications
-                        </>
-                      ) : (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-white" />
-                          🟢 Start Bot Messages & Notifications
-                        </>
-                      )}
-                    </button>
+                  {/* Bots Hub Navigation */}
+                  <div className={`flex bg-slate-100 dark:bg-slate-900 rounded-lg p-1 ${theme === 'dark' ? 'border border-slate-800' : 'border border-slate-200'}`}>
+                    {[
+                      { id: 'telegram', label: 'Telegram Bot' },
+                      { id: 'whatsapp', label: 'WhatsApp Bot' },
+                      { id: 'facebook', label: 'Facebook Bot' }
+                    ].map(bot => (
+                        <button
+                            key={bot.id}
+                            onClick={() => setBotSubTab(bot.id as any)}
+                            className={`flex-1 py-2 rounded-md text-[10px] uppercase font-black transition-all ${
+                                botSubTab === bot.id 
+                                ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                            }`}
+                        >
+                            {bot.label}
+                        </button>
+                    ))}
                   </div>
 
-                  {/* HIGH-LEVEL STATS AND RECRUITING INDICATORS */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Total Group Members</span>
-                      <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400">1,384 Users</p>
-                      <span className="text-[8px] text-gray-500 font-medium">Synced last minutes ago</span>
-                    </div>
-                    <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Cross-Group Recruited</span>
-                      <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-sans">Automatic (24/7)</p>
-                      <span className="text-[8px] text-gray-500 font-medium font-sans">Simulating external sweeps</span>
-                    </div>
-                    <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Registration Link Pushed</span>
-                      <p className="text-xs font-mono font-bold text-amber-500 truncate mt-1">lwex.onrender.com</p>
-                      <span className="text-[8px] text-gray-500 font-medium">Inviting members to signup link</span>
-                    </div>
-                  </div>
-
-                  {/* PINNED NOTIFICATION BANNER */}
-                  {telegramConfig?.pinnedMessageId ? (
-                    <div className="p-3.5 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-left flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase text-yellow-600 dark:text-yellow-400 tracking-wider">
-                          <Pin className="w-3 h-3 animate-pulse" />
-                          Announcements Board: Pinned Group Signal
-                        </span>
-                        <p className="text-xs text-slate-700 dark:text-slate-200 font-medium">
-                          <strong>{telegramConfig.pinnedMessageSender}:</strong>{' '}
-                          <span dangerouslySetInnerHTML={{ __html: telegramConfig.pinnedMessageText || '' }} />
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleUnpinNotification}
-                        disabled={isPinning}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-slate-950 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 whitespace-nowrap border-none"
-                      >
-                        <PinOff className="w-3 h-3" />
-                        Unpin Message
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-3.5 rounded-lg bg-slate-100/50 dark:bg-zinc-900/40 border border-slate-250 dark:border-zinc-800 text-left text-xs text-slate-500">
-                      📌 No announcement currently pinned. Click any "Pin Notification" button below to highlight a key signal to all members instantly!
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* LEFT PANEL: CONFIG FORM */}
-                    <div className={`p-4 rounded-xl border text-left ${theme === 'dark' ? 'border-slate-800 bg-slate-900/50' : 'border-gray-200 bg-white'}`}>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                        <Settings className="w-4 h-4 text-indigo-500" />
-                        Bot Configuration
-                      </h4>
-                      
-                      {telegramConfig ? (
-                        <form onSubmit={handleUpdateTelegramConfig} className="space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Bots Hub Content */}
+                  {botSubTab === 'telegram' && (
+                    <div className="space-y-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
                             <div>
-                              <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Telegram Bot Token</label>
-                              <input 
-                                type="password"
-                                value={telegramConfig.botToken || ''}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, botToken: e.target.value})}
-                                placeholder="e.g. 123456789:ABC..."
-                                className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400"
-                              />
+                                <h3 className="text-lg font-bold">Telegram Automation & Group Controls</h3>
+                                <p className="text-xs text-slate-500">Manage automated simulated chatbot signal dispatches, scheduled campaigns and target hunter groups sweeps.</p>
                             </div>
-                            <div>
-                              <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Group Chat ID</label>
-                              <input 
-                                type="text"
-                                value={telegramConfig.groupChatId || ''}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, groupChatId: e.target.value})}
-                                placeholder="e.g. -1001234567890"
-                                className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400"
-                              />
+                            {/* MASTER TOGGLE BUTTON FOR CHATBOT DISPATCH & SCHEDULERS */}
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const nextState = !telegramConfig?.autoSimulateIntervalEnabled;
+                                    setTelegramConfig(prev => prev ? { ...prev, autoSimulateIntervalEnabled: nextState } : prev);
+                                    try {
+                                        const res = await fetch('/api/telegram/config', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ autoSimulateIntervalEnabled: nextState })
+                                        });
+                                        if (res.ok) {
+                                            triggerToast(nextState ? '🟢 Bot broadcasts resumed successfully!' : '🔴 Bot broadcasts STOPPED on the group.', true);
+                                        } else {
+                                            triggerToast('Failed to update bot transmission state', false);
+                                        }
+                                    } catch (e) {
+                                        triggerToast('Error saving telegram config state', false);
+                                    }
+                                }}
+                                className={`px-4 py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 border-none transition-all cursor-pointer shadow-sm select-none ${
+                                    telegramConfig?.autoSimulateIntervalEnabled
+                                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                }`}
+                            >
+                                {telegramConfig?.autoSimulateIntervalEnabled ? (
+                                    <>
+                                        <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                                        🔴 Stop Bot Messages & Notifications
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="w-2 h-2 rounded-full bg-white" />
+                                        🟢 Start Bot Messages & Notifications
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                        {/* HIGH-LEVEL STATS AND RECRUITING INDICATORS */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
+                                <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Total Group Members</span>
+                                <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400">1,384 Users</p>
+                                <span className="text-[8px] text-gray-500 font-medium">Synced last minutes ago</span>
                             </div>
-                          </div>
-
-                          <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
-                            <div className="flex items-center gap-2">
-                              <span className="block font-bold text-[10px] text-pink-600 dark:text-pink-400">Auto-Invite Group Members via DM</span>
+                            <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
+                                <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Cross-Group Recruited</span>
+                                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-sans">Automatic (24/7)</p>
+                                <span className="text-[8px] text-gray-500 font-medium font-sans">Simulating external sweeps</span>
                             </div>
-                            <input 
-                              type="checkbox"
-                              checked={telegramConfig.autoInviteDMs}
-                              onChange={(e) => setTelegramConfig({...telegramConfig, autoInviteDMs: e.target.checked})}
-                              className="cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
-                             <div className="flex items-center gap-2">
-                                <span className="block font-bold text-[10px] text-indigo-600 dark:text-indigo-400">Enable Auto-Simulate Messages</span>
-                             </div>
-                             <input 
-                                type="checkbox"
-                                checked={telegramConfig.autoSimulateIntervalEnabled}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, autoSimulateIntervalEnabled: e.target.checked})}
-                                className="cursor-pointer"
-                             />
-                          </div>
-
-                          {telegramConfig.autoSimulateIntervalEnabled && (
-                            <div className="space-y-3 pl-3 border-l-2 border-indigo-500/20">
-                              <div>
-                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Interval (Seconds)</label>
-                                <input 
-                                  type="number"
-                                  min="10"
-                                  value={telegramConfig.autoSimulateIntervalSeconds}
-                                  onChange={(e) => setTelegramConfig({...telegramConfig, autoSimulateIntervalSeconds: parseInt(e.target.value) || 30})}
-                                  className="w-full sm:w-32 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
-                                />
-                              </div>
-                              <div>
-                                  <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Message Types (comma separated)</label>
-                                  <input 
-                                    type="text"
-                                    value={telegramConfig.autoSimulateMessageTypes ? telegramConfig.autoSimulateMessageTypes.join(', ') : ''}
-                                    onChange={(e) => setTelegramConfig({...telegramConfig, autoSimulateMessageTypes: e.target.value.split(',').map(s => s.trim())})}
-                                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
-                                  />
-                              </div>
+                            <div className={`p-3.5 rounded-lg border text-left ${theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-gray-200'}`}>
+                                <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Registration Link Pushed</span>
+                                <p className="text-xs font-mono font-bold text-amber-500 truncate mt-1">lwex.onrender.com</p>
+                                <span className="text-[8px] text-gray-500 font-medium">Inviting members to signup link</span>
                             </div>
-                          )}
-
-                          <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
-                             <div className="flex items-center gap-2">
-                                <span className="block font-bold text-[10px] text-emerald-600 dark:text-emerald-400">Enable Member Harvest Sweeper (Hunter Bot)</span>
-                             </div>
-                             <input 
-                                type="checkbox"
-                                checked={!!telegramConfig.hunterIntervalEnabled}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, hunterIntervalEnabled: e.target.checked})}
-                                className="cursor-pointer"
-                             />
-                          </div>
-
-                          {telegramConfig.hunterIntervalEnabled && (
-                            <div className="space-y-3 pl-3 border-l-2 border-emerald-500/20">
-                              <div>
-                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Harvest Sweep Duration / Timer (Seconds)</label>
-                                <input 
-                                  type="number"
-                                  min="10"
-                                  value={telegramConfig.hunterIntervalSeconds || 90}
-                                  onChange={(e) => setTelegramConfig({...telegramConfig, hunterIntervalSeconds: parseInt(e.target.value) || 90})}
-                                  className="w-full sm:w-32 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
-                                />
-                              </div>
-                              <div className="flex items-center justify-between p-2 bg-slate-150 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800/60">
-                                <span className="block text-[9px] font-bold text-gray-400 uppercase">Announce Recruitments on Public Chat Group</span>
-                                <input 
-                                  type="checkbox"
-                                  checked={!!telegramConfig.hunterAnnounceOnMainGroup}
-                                  onChange={(e) => setTelegramConfig({...telegramConfig, hunterAnnounceOnMainGroup: e.target.checked})}
-                                  className="cursor-pointer"
-                                />
-                              </div>
+                        </div>
+                        {/* PINNED NOTIFICATION BANNER */}
+                        {telegramConfig?.pinnedMessageId ? (
+                            <div className="p-3.5 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-left flex items-start justify-between gap-4">
+                                <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase text-yellow-600 dark:text-yellow-400 tracking-wider">
+                                        <Pin className="w-3 h-3 animate-pulse" />
+                                        Announcements Board: Pinned Group Signal
+                                    </span>
+                                    <p className="text-xs text-slate-700 dark:text-slate-200 font-medium">
+                                        <strong>{telegramConfig.pinnedMessageSender}:</strong>{' '}
+                                        <span dangerouslySetInnerHTML={{ __html: telegramConfig.pinnedMessageText || '' }} />
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleUnpinNotification}
+                                    disabled={isPinning}
+                                    className="bg-yellow-500 hover:bg-yellow-600 text-slate-950 px-2 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 whitespace-nowrap border-none"
+                                >
+                                    <PinOff className="w-3 h-3" />
+                                    Unpin Message
+                                </button>
                             </div>
-                          )}
-
-                          <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-                            <span className="block font-bold text-[10px] text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Custom Broadcast Message Templates</span>
-                            <p className="text-[9px] text-gray-400 italic">Available variables: {"{prefix}"}, {"{text}"}, {"{link}"}</p>
-                            
-                            <div>
-                              <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">VIP Campaign Template</label>
-                              <textarea 
-                                value={telegramConfig.templateVIPCampaign || ''}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, templateVIPCampaign: e.target.value})}
-                                rows={2}
-                                className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-gray-500 font-mono"
-                                placeholder="<b>[LWEX {prefix}]</b>\n\n{text}\n\n👉 Trade Now: {link}"
-                              />
+                        ) : (
+                            <div className="p-3.5 rounded-lg bg-slate-100/50 dark:bg-zinc-900/40 border border-slate-250 dark:border-zinc-800 text-left text-xs text-slate-500">
+                                📌 No announcement currently pinned. Click any "Pin Notification" button below to highlight a key signal to all members instantly!
                             </div>
+                        )}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* LEFT PANEL: CONFIG FORM */}
+                            <div className={`p-4 rounded-xl border text-left ${theme === 'dark' ? 'border-slate-800 bg-slate-900/50' : 'border-gray-200 bg-white'}`}>
+                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                                    <Settings className="w-4 h-4 text-indigo-500" />
+                                    Bot Configuration
+                                </h4>
+                                {telegramConfig ? (
+                                    <form onSubmit={handleUpdateTelegramConfig} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Telegram Bot Token</label>
+                                                <input
+                                                    type="password"
+                                                    value={telegramConfig.botToken || ''}
+                                                    onChange={(e) => setTelegramConfig({ ...telegramConfig, botToken: e.target.value })}
+                                                    placeholder="e.g. 123456789:ABC..."
+                                                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Group Chat ID</label>
+                                                <input
+                                                    type="text"
+                                                    value={telegramConfig.groupChatId || ''}
+                                                    onChange={(e) => setTelegramConfig({ ...telegramConfig, groupChatId: e.target.value })}
+                                                    placeholder="e.g. -1001234567890"
+                                                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
+                                            <div className="flex items-center gap-2">
+                                                <span className="block font-bold text-[10px] text-pink-600 dark:text-pink-400">Auto-Invite Group Members via DM</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={telegramConfig.autoInviteDMs}
+                                                onChange={(e) => setTelegramConfig({ ...telegramConfig, autoInviteDMs: e.target.checked })}
+                                                className="cursor-pointer"
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
+                                            <div className="flex items-center gap-2">
+                                                <span className="block font-bold text-[10px] text-indigo-600 dark:text-indigo-400">Enable Auto-Simulate Messages</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={telegramConfig.autoSimulateIntervalEnabled}
+                                                onChange={(e) => setTelegramConfig({ ...telegramConfig, autoSimulateIntervalEnabled: e.target.checked })}
+                                                className="cursor-pointer"
+                                            />
+                                        </div>
+                                        {telegramConfig.autoSimulateIntervalEnabled && (
+                                            <div className="space-y-3 pl-3 border-l-2 border-indigo-500/20">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Interval (Seconds)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="10"
+                                                        value={telegramConfig.autoSimulateIntervalSeconds}
+                                                        onChange={(e) => setTelegramConfig({ ...telegramConfig, autoSimulateIntervalSeconds: parseInt(e.target.value) || 30 })}
+                                                        className="w-full sm:w-32 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Message Types (comma separated)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={telegramConfig.autoSimulateMessageTypes ? telegramConfig.autoSimulateMessageTypes.join(', ') : ''}
+                                                        onChange={(e) => setTelegramConfig({ ...telegramConfig, autoSimulateMessageTypes: e.target.value.split(',').map(s => s.trim()) })}
+                                                        className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-between p-2.5 bg-slate-100 dark:bg-zinc-900/50 rounded border border-slate-200 dark:border-zinc-800">
+                                            <div className="flex items-center gap-2">
+                                                <span className="block font-bold text-[10px] text-emerald-600 dark:text-emerald-400">Enable Member Harvest Sweeper (Hunter Bot)</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!telegramConfig.hunterIntervalEnabled}
+                                                onChange={(e) => setTelegramConfig({ ...telegramConfig, hunterIntervalEnabled: e.target.checked })}
+                                                className="cursor-pointer"
+                                            />
+                                        </div>
+                                    </form>
+                                ) : null}
 
-                            <div>
-                              <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Alert Template</label>
-                              <textarea 
-                                value={telegramConfig.templateAlert || ''}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, templateAlert: e.target.value})}
-                                rows={2}
-                                className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-gray-500 font-mono"
-                                placeholder="<b>[LWEX {prefix}]</b>\n\n{text}\n\n👉 Trade Now: {link}"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Signal Prediction Template</label>
-                              <textarea 
-                                value={telegramConfig.templateSignal || ''}
-                                onChange={(e) => setTelegramConfig({...telegramConfig, templateSignal: e.target.value})}
-                                rows={2}
-                                className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder-gray-500 font-mono"
-                                placeholder="<b>[LWEX {prefix}]</b>\n\n{text}\n\n👉 Trade Now: {link}"
-                              />
-                            </div>
-                          </div>
-
-                          <button
-                            type="submit"
-                            disabled={isSavingTgConfig}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-xs tracking-widest shadow transition-all disabled:opacity-50 border-none cursor-pointer"
-                          >
-                            {isSavingTgConfig ? 'Saving...' : 'Deploy Telegram Config'}
-                          </button>
-                        </form>
-                      ) : (
-                        <div className="text-xs text-gray-500">Loading configuration...</div>
-                      )}
-
-                      <hr className={`my-6 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'}`} />
+                                        <hr className={`my-6 border-t ${theme === 'dark' ? 'border-slate-800' : 'border-gray-200'}`} />
 
                       <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
                         <ArrowDownCircle className="w-4 h-4 text-emerald-500" />
@@ -2482,7 +2464,72 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                           })
                         )}
                       </div>
+
+                            </div>
+                        </div>
                     </div>
+                  )}
+
+                  {botSubTab === 'whatsapp' && (
+                    <div className={`p-6 rounded-xl border ${theme === 'dark' ? 'border-slate-800 bg-slate-900/40' : 'border-gray-200 bg-gray-50'}`}>
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">WhatsApp Automation</h4>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable WhatsApp Automation</span>
+                                <input type="checkbox" checked={whatsappConfig.enabled} onChange={(e) => setWhatsappConfig({...whatsappConfig, enabled: e.target.checked})} className="accent-green-500" />
+                            </label>
+
+                            <AdminWhatsAppManager config={whatsappConfig} setConfig={setWhatsappConfig} theme={theme} />
+
+                            <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto-Broadcast Enabled</span>
+                                <input type="checkbox" checked={whatsappConfig.autoBroadcastEnabled} onChange={(e) => setWhatsappConfig({...whatsappConfig, autoBroadcastEnabled: e.target.checked})} className="accent-green-500" />
+                            </label>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Broadcast Message Template</label>
+                                <textarea value={whatsappConfig.broadcastMessage} onChange={(e) => setWhatsappConfig({...whatsappConfig, broadcastMessage: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-2 text-xs" rows={3}></textarea>
+                            </div>
+                        </div>
+                    </div>
+                  )}
+                  {botSubTab === 'facebook' && (
+                    <div className={`p-6 rounded-xl border ${theme === 'dark' ? 'border-slate-800 bg-slate-900/40' : 'border-gray-200 bg-gray-50'}`}>
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">Facebook Automation</h4>
+                        <div className="space-y-4">
+                            <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable Facebook Automation</span>
+                                <input type="checkbox" checked={fbBotConfig.enabled} onChange={(e) => setFbBotConfig({...fbBotConfig, enabled: e.target.checked})} className="accent-blue-500" />
+                            </label>
+                            
+                            <AdminFacebookBotManager config={fbBotConfig} setConfig={setFbBotConfig} theme={theme} />
+
+                            <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto Invite Users</span>
+                                <input type="checkbox" checked={fbBotConfig.autoInviteEnabled} onChange={(e) => setFbBotConfig({...fbBotConfig, autoInviteEnabled: e.target.checked})} className="accent-blue-500" />
+                            </label>
+
+                            <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable Broadcast</span>
+                                <input type="checkbox" checked={fbBotConfig.broadcastEnabled} onChange={(e) => setFbBotConfig({...fbBotConfig, broadcastEnabled: e.target.checked})} className="accent-blue-500" />
+                            </label>
+                            
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Broadcast Message</label>
+                                <textarea value={fbBotConfig.broadcastMessage} onChange={(e) => setFbBotConfig({...fbBotConfig, broadcastMessage: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-2 text-xs" rows={2}></textarea>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Target Audience Keyword</label>
+                                <input type="text" value={fbBotConfig.targetAudienceKeyword} onChange={(e) => setFbBotConfig({...fbBotConfig, targetAudienceKeyword: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-2 text-xs" />
+                            </div>
+                        </div>
+                    </div>
+                  )}
+
+                  {/* Move Broadcaster and Feed here, inside activeTab... */}
+
+
 
                     {/* BOTTOM PANEL: MEMBER GROWTH CHART */}
                     <div className={`p-4 rounded-xl border text-left flex flex-col h-[380px] lg:col-span-2 ${theme === 'dark' ? 'border-slate-800 bg-slate-900/50' : 'border-gray-200 bg-white'}`}>
@@ -2746,8 +2793,7 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {activeTab === 'visits' && (
                 <div className="space-y-6">
