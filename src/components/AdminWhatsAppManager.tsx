@@ -20,7 +20,7 @@ export const AdminWhatsAppManager: React.FC<AdminWhatsAppManagerProps> = ({ conf
   const [groupStatuses, setGroupStatuses] = useState<Record<number, 'idle' | 'checking' | 'active' | 'invalid'>>({});
 
   const validateLink = (link: string) => {
-    const whatsappRegex = /^https:\/\/chat\.whatsapp\.com\/[a-zA-Z0-9]{20,25}$/;
+    const whatsappRegex = /^https:\/\/chat\.whatsapp\.com\/.+$/;
     return whatsappRegex.test(link);
   };
 
