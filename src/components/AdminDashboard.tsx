@@ -530,11 +530,13 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     }
     
     const interval = setInterval(() => {
-      const statuses: ('active' | 'idle' | 'error')[] = ['active', 'idle', 'error'];
-      // Weigh 'active' higher
       const weightedStatuses = ['active', 'active', 'active', 'active', 'idle', 'error'];
-      const nextStatus = weightedStatuses[Math.floor(Math.random() * weightedStatuses.length)];
-      setFacebookBotStatus(nextStatus as 'active' | 'idle' | 'error');
+      const nextStatus = weightedStatuses[Math.floor(Math.random() * weightedStatuses.length)] as 'active' | 'idle' | 'error';
+      
+      setFacebookBotStatus(prevStatus => {
+        if (prevStatus !== nextStatus) return nextStatus;
+        return prevStatus;
+      });
     }, 5000);
     
     return () => clearInterval(interval);
