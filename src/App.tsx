@@ -1626,12 +1626,14 @@ export default function App() {
     };
   }, []);
 
+  /*
   // Sync tradeHistory to server automatically when it changes
   useEffect(() => {
     if (currentUser) {
       pushUserState(activeContracts, tradeHistory, priceAlerts);
     }
   }, [tradeHistory]);
+  */
 
   useEffect(() => {
     const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes session duration (600 seconds)

@@ -209,8 +209,10 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
   });
 
   const [botSubTab, setBotSubTab] = useState<'telegram' | 'whatsapp' | 'facebook'>('telegram');
+  const [facebookBotStatus, setFacebookBotStatus] = useState<'active' | 'idle' | 'error'>('idle');
   const [isPinning, setIsPinning] = useState(false);
   const [isSavingTgConfig, setIsSavingTgConfig] = useState(false);
+  const [isSavingWhatsappConfig, setIsSavingWhatsappConfig] = useState(false);
   const [customBroadcast, setCustomBroadcast] = useState('');
   const [broadcastType, setBroadcastType] = useState<'signal' | 'campaign' | 'alert'>('signal');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -446,6 +448,45 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
     return data;
   }, []);
 
+  const fetchWhatsAppConfig = async () => {
+    try {
+      const res = await fetch('/api/whatsapp/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setWhatsappConfig(data.config);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching WhatsApp config:', e);
+    }
+  };
+
+  const handleSaveWhatsAppConfig = async () => {
+    setIsSavingWhatsappConfig(true);
+    try {
+      const res = await fetch('/api/whatsapp/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(whatsappConfig)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWhatsappConfig(data.config);
+        triggerToast('WhatsApp configuration updated successfully.', true);
+      } else {
+        triggerToast('Failed to update WhatsApp configuration.', false);
+      }
+    } catch (e) {
+      console.error(e);
+      triggerToast('Error saving WhatsApp configuration', false);
+    } finally {
+      setIsSavingWhatsappConfig(false);
+    }
+  };
+
   // Poll for real-time updates every 10 seconds while authenticated
   useEffect(() => {
     if (!isOpen || !isAuthenticated) return;
@@ -475,14 +516,34 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
           })
           .catch(() => {});
         fetchTelegramAddons();
+        fetchWhatsAppConfig(); // Fetch whatsapp config too
       }
     }, 10000);
     return () => clearInterval(intervalId);
   }, [isOpen, isAuthenticated, adminKey, activeTab]);
 
+  // Simulate Facebook bot status changes
+  useEffect(() => {
+    if (!fbBotConfig.enabled) {
+      setFacebookBotStatus('idle');
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      const statuses: ('active' | 'idle' | 'error')[] = ['active', 'idle', 'error'];
+      // Weigh 'active' higher
+      const weightedStatuses = ['active', 'active', 'active', 'active', 'idle', 'error'];
+      const nextStatus = weightedStatuses[Math.floor(Math.random() * weightedStatuses.length)];
+      setFacebookBotStatus(nextStatus as 'active' | 'idle' | 'error');
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [fbBotConfig.enabled]);
+
   useEffect(() => {
     if (activeTab === 'telegram' && isAuthenticated) {
       fetchTelegramAddons();
+      fetchWhatsAppConfig();
     }
   }, [activeTab, isAuthenticated]);
 
@@ -2490,12 +2551,31 @@ export default function AdminDashboard({ isOpen, onClose, theme, triggerToast }:
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Broadcast Message Template</label>
                                 <textarea value={whatsappConfig.broadcastMessage} onChange={(e) => setWhatsappConfig({...whatsappConfig, broadcastMessage: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded px-3 py-2 text-xs" rows={3}></textarea>
                             </div>
+                            <div className="mt-4 flex justify-end">
+                                <button
+                                    onClick={handleSaveWhatsAppConfig}
+                                    disabled={isSavingWhatsappConfig}
+                                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                                >
+                                    {isSavingWhatsappConfig ? 'Saving...' : 'Save WhatsApp Settings'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                   )}
                   {botSubTab === 'facebook' && (
                     <div className={`p-6 rounded-xl border ${theme === 'dark' ? 'border-slate-800 bg-slate-900/40' : 'border-gray-200 bg-gray-50'}`}>
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">Facebook Automation</h4>
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center justify-between gap-1.5">
+                          <span>Facebook Automation</span>
+                          <span className={`text-[10px] uppercase font-bold flex items-center gap-1 ${
+                            facebookBotStatus === 'active' ? 'text-green-500' :
+                            facebookBotStatus === 'error' ? 'text-red-500' :
+                            'text-gray-400'
+                          }`}>
+                            <div className={`w-2 h-2 rounded-full ${facebookBotStatus === 'active' ? 'bg-green-500' : facebookBotStatus === 'error' ? 'bg-red-500' : 'bg-gray-400'}`}></div>
+                            {facebookBotStatus}
+                          </span>
+                        </h4>
                         <div className="space-y-4">
                             <label className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800 cursor-pointer">
                                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable Facebook Automation</span>

@@ -2440,6 +2440,14 @@ Active technical indicator values: ${indicatorsString}.`}`;
     templateSignal: `<b>[LWEX 📈 Dynamic Options Prediction]</b>\n\n{text}\n\n👉 Trade Now: {link}`
   };
 
+  let whatsappConfig = {
+    enabled: false,
+    groups: [{ id: Date.now(), link: 'https://chat.whatsapp.com/EmKVrpIlK8mC1nawFSPtsI?s=cl&p=a&mlu=4&amv=1' }],
+    autoBroadcastEnabled: false,
+    broadcastIntervalMinutes: 60,
+    broadcastMessage: 'Welcome to LWEX! Join our community trading signals here: {LINK}',
+  };
+
   let telegramLogs: Array<{ id: string; sender: string; text: string; timestamp: string }> = [
     { id: 'tg-init', sender: 'System Manager', text: 'Telegram group bot client initiated. Automatic multi-member simulation is active.', timestamp: new Date().toISOString() }
   ];
@@ -3181,6 +3189,11 @@ Active technical indicator values: ${indicatorsString}.`}`;
     });
   });
 
+  // GET WhatsApp config
+  app.get('/api/whatsapp/config', (req, res) => {
+    return res.json({ config: whatsappConfig });
+  });
+
   // POST update Telegram configuration
   app.post('/api/telegram/config', async (req, res) => {
     try {
@@ -3267,6 +3280,23 @@ Active technical indicator values: ${indicatorsString}.`}`;
       });
 
       return res.json({ success: true, config: telegramConfig, logs: telegramLogs });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // POST update WhatsApp configuration
+  app.post('/api/whatsapp/config', async (req, res) => {
+    try {
+      const { enabled, groups, autoBroadcastEnabled, broadcastIntervalMinutes, broadcastMessage } = req.body;
+      
+      if (enabled !== undefined) whatsappConfig.enabled = enabled;
+      if (groups !== undefined) whatsappConfig.groups = groups;
+      if (autoBroadcastEnabled !== undefined) whatsappConfig.autoBroadcastEnabled = autoBroadcastEnabled;
+      if (broadcastIntervalMinutes !== undefined) whatsappConfig.broadcastIntervalMinutes = parseInt(broadcastIntervalMinutes, 10) || 60;
+      if (broadcastMessage !== undefined) whatsappConfig.broadcastMessage = broadcastMessage;
+      
+      return res.json({ success: true, config: whatsappConfig });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });
     }
