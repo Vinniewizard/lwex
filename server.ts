@@ -2104,12 +2104,19 @@ Active technical indicator values: ${indicatorsString}.`}`;
     temporaryOtps.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 }); // 10 mins
 
     if (resend) {
-      await resend.emails.send({
-        from: 'LWEX Security <security@lwex.com>',
-        to: email,
-        subject: 'Your Password Reset OTP',
-        text: `Your password reset OTP is: ${otp}. It expires in 10 minutes.`
-      });
+      try {
+        const result = await resend.emails.send({
+          from: 'LWEX Security <security@lwex.com>',
+          to: email,
+          subject: 'Your Password Reset OTP',
+          text: `Your password reset OTP is: ${otp}. It expires in 10 minutes.`
+        });
+        console.log('[Resend] Email sent result:', result);
+      } catch (err) {
+        console.error('[Resend] Email send error:', err);
+      }
+    } else {
+      console.error('[Resend] Resend instance not initialized. check RESEND_API_KEY.');
     }
     
     return res.json({ success: true, message: 'OTP sent to your email.' });
