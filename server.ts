@@ -605,6 +605,37 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
+// Helper to send notifications
+async function sendSecurityAlert(user: any, method: string) {
+  console.log(`[Security Alert] Sending ${method} to ${user.email}`);
+  
+  if (method === 'email' && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    try {
+      await transporter.sendMail({
+        from: '"LWEX Security" <security@lwex.com>',
+        to: user.email,
+        subject: 'Security Alert: Failed Login Attempt',
+        text: `A failed login attempt was detected on your LWEX account. If this wasn't you, please reset your password immediately.`
+      });
+    } catch (err) {
+      console.error('Failed to send security email:', err);
+    }
+  }
+  // SMS placeholder
+  if (method === 'sms' && process.env.TWILIO_ACCOUNT_SID) {
+    console.log(`[SMS Alert] Placeholder for SMS to ${user.phone}`);
+  }
+}
 
 const upload = multer({ storage: storage });
 
@@ -2004,6 +2035,9 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
       const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
       if (passwordHash !== user.password_hash) {
+        // Send notifications
+        await sendSecurityAlert(user, 'email');
+        await sendSecurityAlert(user, 'sms');
         return res.status(401).json({ success: false, message: 'Invalid email/phone or password.' });
       }
 

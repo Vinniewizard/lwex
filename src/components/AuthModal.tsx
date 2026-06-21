@@ -185,6 +185,16 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
       .catch((err) => {
         setFormError(err.message || 'Network error occurred. Please try again.');
         setIsLoading(false);
+        // Show browser notification if possible
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('LWEX Security', { body: 'A failed login attempt was detected on your account.' });
+        } else if ('Notification' in window && Notification.permission !== 'denied') {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+              new Notification('LWEX Security', { body: 'A failed login attempt was detected on your account.' });
+            }
+          });
+        }
       });
 
     } else if (view === 'forgot_password') {
