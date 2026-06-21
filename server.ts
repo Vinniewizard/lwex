@@ -2443,8 +2443,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
   let whatsappConfig = {
     enabled: false,
     groups: [
-      { id: Date.now(), link: 'https://chat.whatsapp.com/EmKVrpIlK8mC1nawFSPtsI?s=cl&p=a&mlu=4&amv=1' },
-      { id: Date.now() + 1, link: 'https://chat.whatsapp.com/FA32GpUv1OyES3AYFidIKw' }
+      { id: Date.now(), link: 'https://chat.whatsapp.com/FA32GpUv1OyES3AYFidIKw?s=cl&p=a&mlu=1' }
     ],
     autoBroadcastEnabled: false,
     broadcastIntervalMinutes: 60,
