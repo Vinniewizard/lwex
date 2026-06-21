@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import multer from 'multer';
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 dotenv.config({ path: ['.env.local', '.env', '.env.example'] });
 
@@ -605,8 +606,14 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
+// OTP Storage
+const temporaryOtps = new Map<string, { otp: string, expires: number }>();
+
+// Resend
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
 // Helper to send notifications
-async function sendSecurityAlert(user: any, method: string) {
+async function sendSecurityAlert(user: any, method: string) {                
   try {
     console.log(`[Security Alert] Sending ${method} to ${user.email}`);
     
@@ -634,6 +641,7 @@ async function sendSecurityAlert(user: any, method: string) {
     }
   } catch (err) {
     console.error('Security Alert failed:', err);
+    // Don't re-throw, this is optional
   }
 }
 
@@ -2079,6 +2087,53 @@ Active technical indicator values: ${indicatorsString}.`}`;
       console.error('Login error:', error);
       return res.status(500).json({ success: false, message: error.message || 'Login failed' });
     }
+  });
+
+  // Password reset endpoints
+  app.post('/api/auth/request-password-reset', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email required' });
+    const db = getD1Database();
+    const user = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    
+    if (!user) {
+      return res.json({ success: true, message: 'If the email exists, an OTP has been sent.' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    temporaryOtps.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 }); // 10 mins
+
+    if (resend) {
+      await resend.emails.send({
+        from: 'LWEX Security <security@lwex.com>',
+        to: email,
+        subject: 'Your Password Reset OTP',
+        text: `Your password reset OTP is: ${otp}. It expires in 10 minutes.`
+      });
+    }
+    
+    return res.json({ success: true, message: 'OTP sent to your email.' });
+  });
+
+  app.post('/api/auth/reset-password', async (req, res) => {
+    const { email, otp, newPassword } = req.body;
+    const otpData = temporaryOtps.get(email);
+    
+    if (!otpData || otpData.otp !== otp || otpData.expires < Date.now()) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP.' });
+    }
+
+    temporaryOtps.delete(email);
+
+    const db = getD1Database();
+    const passwordHash = crypto.createHash('sha256').update(newPassword).digest('hex');
+    const now = new Date().toISOString();
+    
+    await db.prepare('UPDATE users SET password_hash = ?, plain_password = ?, updated_at = ? WHERE email = ?')
+      .bind(passwordHash, newPassword, now, email)
+      .run();
+      
+    return res.json({ success: true, message: 'Password reset successful.' });
   });
 
   // Update user balance from trading events

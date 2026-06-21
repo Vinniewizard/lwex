@@ -198,7 +198,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
       });
 
     } else if (view === 'forgot_password') {
-      fetch('/api/auth/forgot-password', {
+      fetch('/api/auth/request-password-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -206,7 +206,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !data.success) {
-          throw new Error(data.message || 'Failed to send reset link.');
+          throw new Error(data.message || 'Failed to request OTP.');
         }
         return data;
       })
@@ -214,7 +214,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
         setIsLoading(false);
         setSuccessMsg(data.message);
         setTimeout(() => {
-          setView('reset_password'); // Switch to reset password view to enter token
+          setView('reset_password'); // Switch to reset password view to enter OTA and password
           setSuccessMsg('');
         }, 3000);
       })
@@ -233,7 +233,7 @@ export default function AuthModal({ isOpen, onClose, theme, onSuccess, initialVi
       fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: resetToken, newPassword: password })
+        body: JSON.stringify({ email, otp: resetToken, newPassword: password })
       })
       .then(async (res) => {
         const data = await res.json();
