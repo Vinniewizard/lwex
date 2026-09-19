@@ -871,6 +871,34 @@ async function startServer() {
      // Likely already exists
   }
 
+  // Ensure conditions columns exist in p2p_orders table
+  try {
+     const db = getD1Database();
+     if (db.prepare) {
+        await db.prepare('ALTER TABLE p2p_orders ADD COLUMN required_kyc INTEGER DEFAULT 0').run();
+     } else {
+        await db.query('ALTER TABLE p2p_orders ADD COLUMN required_kyc INTEGER DEFAULT 0');
+     }
+  } catch (e) {}
+
+  try {
+     const db = getD1Database();
+     if (db.prepare) {
+        await db.prepare('ALTER TABLE p2p_orders ADD COLUMN required_min_trades INTEGER DEFAULT 0').run();
+     } else {
+        await db.query('ALTER TABLE p2p_orders ADD COLUMN required_min_trades INTEGER DEFAULT 0');
+     }
+  } catch (e) {}
+
+  try {
+     const db = getD1Database();
+     if (db.prepare) {
+        await db.prepare('ALTER TABLE p2p_orders ADD COLUMN terms TEXT DEFAULT ""').run();
+     } else {
+        await db.query('ALTER TABLE p2p_orders ADD COLUMN terms TEXT DEFAULT ""');
+     }
+  } catch (e) {}
+
   // Ensure p2p_trades table exists in any running SQLite/Postgres DB
   try {
      const db = getD1Database();
@@ -2371,18 +2399,66 @@ Active technical indicator values: ${indicatorsString}.`}`;
     return res.json({ success: true, balance: user.real_balance });
   });
 
+  app.get('/api/p2p/user-info', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      const user = await db.prepare('SELECT real_balance FROM users WHERE id = ?').bind(userId).first() as any;
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+      
+      let verification_status = 'unverified';
+      try {
+        const profile = await db.prepare('SELECT verification_status FROM user_profiles WHERE user_id = ?').bind(userId).first() as any;
+        if (profile && profile.verification_status) {
+          verification_status = profile.verification_status;
+        }
+      } catch (profileErr) {
+        console.warn('Could not read user profile:', profileErr);
+      }
+      
+      let completedTradesCount = 0;
+      try {
+        if (db.prepare) {
+          const countRes = await db.prepare("SELECT COUNT(*) as cnt FROM p2p_trades WHERE (buyer_id = ? OR seller_id = ?) AND status = 'completed'").bind(userId, userId).first() as any;
+          if (countRes) completedTradesCount = countRes.cnt;
+        } else {
+          const countRes = await db.query("SELECT COUNT(*) as cnt FROM p2p_trades WHERE (buyer_id = $1 OR seller_id = $2) AND status = 'completed'", [userId, userId]);
+          if (countRes.rows[0]) completedTradesCount = parseInt(countRes.rows[0].cnt, 10);
+        }
+      } catch (tradeErr) {
+        console.warn('Could not read trades count:', tradeErr);
+      }
+      
+      return res.json({ 
+        success: true, 
+        balance: user.real_balance,
+        verificationStatus: verification_status,
+        completedTrades: completedTradesCount
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
   app.post('/api/p2p/orders', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const userId = authHeader.split(' ')[1];
-    const { type, coin, amount, price, paymentMethod } = req.body;
+    const { type, coin, amount, price, paymentMethod, required_kyc, required_min_trades, terms } = req.body;
     
     const db = getD1Database();
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     
-    await db.prepare('INSERT INTO p2p_orders (id, user_id, type, coin, amount, price, paymentMethod, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, userId, type, coin, amount, price, paymentMethod, now)
+    const reqKyc = required_kyc ? 1 : 0;
+    const reqMinTrades = Number(required_min_trades) || 0;
+    const termsText = terms || '';
+    
+    await db.prepare('INSERT INTO p2p_orders (id, user_id, type, coin, amount, price, paymentMethod, required_kyc, required_min_trades, terms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, userId, type, coin, amount, price, paymentMethod, reqKyc, reqMinTrades, termsText, now)
       .run();
     
     return res.json({ success: true, orderId: id });
@@ -2507,6 +2583,57 @@ Active technical indicator values: ${indicatorsString}.`}`;
       if (!seller) return res.status(404).json({ success: false, message: 'Seller account not found' });
       if (seller.real_balance < tradeAmount) {
         return res.status(400).json({ success: false, message: 'Insufficient seller crypto balance for escrow hold' });
+      }
+
+      // Check Seller Conditions on the Buyer:
+      // 1. KYC Requirements:
+      if (order.required_kyc === 1) {
+        let buyer_verification_status = 'unverified';
+        try {
+          if (db.prepare) {
+            const profile = await db.prepare('SELECT verification_status FROM user_profiles WHERE user_id = ?').bind(buyer_id).first() as any;
+            if (profile && profile.verification_status) {
+              buyer_verification_status = profile.verification_status;
+            }
+          } else {
+            const profileRes = await db.query('SELECT verification_status FROM user_profiles WHERE user_id = $1', [buyer_id]);
+            if (profileRes.rows[0] && profileRes.rows[0].verification_status) {
+              buyer_verification_status = profileRes.rows[0].verification_status;
+            }
+          }
+        } catch (profileErr) {
+          console.error(profileErr);
+        }
+
+        if (buyer_verification_status !== 'verified') {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'This trade requires the buyer to have completed KYC identity verification. Please go to Settings > Verification first.' 
+          });
+        }
+      }
+
+      // 2. Completed Trades Requirements:
+      if (order.required_min_trades && Number(order.required_min_trades) > 0) {
+        let buyer_completed_trades = 0;
+        try {
+          if (db.prepare) {
+            const countRes = await db.prepare("SELECT COUNT(*) as cnt FROM p2p_trades WHERE (buyer_id = ? OR seller_id = ?) AND status = 'completed'").bind(buyer_id, buyer_id).first() as any;
+            if (countRes) buyer_completed_trades = countRes.cnt;
+          } else {
+            const countRes = await db.query("SELECT COUNT(*) as cnt FROM p2p_trades WHERE (buyer_id = $1 OR seller_id = $2) AND status = 'completed'", [buyer_id, buyer_id]);
+            if (countRes.rows[0]) buyer_completed_trades = parseInt(countRes.rows[0].cnt, 10);
+          }
+        } catch (tradeErr) {
+          console.error(tradeErr);
+        }
+
+        if (buyer_completed_trades < Number(order.required_min_trades)) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `This seller requires the buyer to have completed at least ${order.required_min_trades} trade(s) (You have: ${buyer_completed_trades}).` 
+          });
+        }
       }
       
       if (db.prepare) {
