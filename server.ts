@@ -802,6 +802,33 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // P2P Auto-cancellation background task
+  setInterval(async () => {
+    const db = getD1Database();
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    try {
+        if (db.prepare) {
+           await db.prepare("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND created_at < ?").bind(thirtyMinutesAgo).run();
+        } else {
+           await db.query("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND created_at < $1", [thirtyMinutesAgo]);
+        }
+    } catch (e) {
+        console.error('Error running P2P auto-cancellation:', e);
+    }
+  }, 60000); // Run every minute
+
+  // Ensure paymentMethod column exists (simple migration attempt)
+  try {
+     const db = getD1Database();
+     if (db.prepare) {
+        await db.prepare('ALTER TABLE p2p_orders ADD COLUMN paymentMethod TEXT').run();
+     } else {
+        await db.query('ALTER TABLE p2p_orders ADD COLUMN paymentMethod TEXT');
+     }
+  } catch (e) {
+     // Likely already exists
+  }
+
   // NOWPayments Config from environment
   const paymentSessions = new Map<string, { amount: number; coin: string }>();
 
@@ -2248,7 +2275,7 @@ Active technical indicator values: ${indicatorsString}.`}`;
   // P2P Marketplace endpoints
   app.get('/api/p2p/orders', async (req, res) => {
     const db = getD1Database();
-    const orders = await db.prepare('SELECT * FROM p2p_orders WHERE status = "open"').all();
+    const orders = await db.prepare("SELECT * FROM p2p_orders WHERE status = 'open'").all();
     return res.json({ success: true, orders: orders.results });
   });
 
@@ -2256,14 +2283,14 @@ Active technical indicator values: ${indicatorsString}.`}`;
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const userId = authHeader.split(' ')[1];
-    const { type, coin, amount, price } = req.body;
+    const { type, coin, amount, price, paymentMethod } = req.body;
     
     const db = getD1Database();
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     
-    await db.prepare('INSERT INTO p2p_orders (id, user_id, type, coin, amount, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, userId, type, coin, amount, price, now)
+    await db.prepare('INSERT INTO p2p_orders (id, user_id, type, coin, amount, price, paymentMethod, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, userId, type, coin, amount, price, paymentMethod, now)
       .run();
     
     return res.json({ success: true, orderId: id });
@@ -2271,13 +2298,13 @@ Active technical indicator values: ${indicatorsString}.`}`;
 
   app.post('/api/p2p/orders/:id/mark-paid', async (req, res) => {
     const db = getD1Database();
-    await db.prepare('UPDATE p2p_orders SET status = "paid" WHERE id = ?').bind(req.params.id).run();
+    await db.prepare("UPDATE p2p_orders SET status = 'paid' WHERE id = ?").bind(req.params.id).run();
     return res.json({ success: true });
   });
 
   app.post('/api/p2p/orders/:id/release', async (req, res) => {
     const db = getD1Database();
-    await db.prepare('UPDATE p2p_orders SET status = "completed" WHERE id = ?').bind(req.params.id).run();
+    await db.prepare("UPDATE p2p_orders SET status = 'completed' WHERE id = ?").bind(req.params.id).run();
     return res.json({ success: true });
   });
 
