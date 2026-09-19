@@ -54,6 +54,19 @@ function getSqliteInstance() {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS p2p_trades (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        buyer_id TEXT NOT NULL,
+        seller_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        price REAL NOT NULL,
+        coin TEXT NOT NULL,
+        status TEXT DEFAULT 'open',
+        chat_messages TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -336,6 +349,19 @@ function getD1Database() {
             amount REAL NOT NULL,
             price REAL NOT NULL,
             status TEXT DEFAULT 'open',
+            created_at TEXT NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS p2p_trades (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            buyer_id TEXT NOT NULL,
+            seller_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            price REAL NOT NULL,
+            coin TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            chat_messages TEXT DEFAULT '[]',
             created_at TEXT NOT NULL
           );
 
@@ -808,9 +834,25 @@ async function startServer() {
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     try {
         if (db.prepare) {
-           await db.prepare("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND created_at < ?").bind(thirtyMinutesAgo).run();
+           await db.prepare("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND status != 'trading' AND created_at < ?").bind(thirtyMinutesAgo).run();
+           
+           // Expired trades auto-cancellation (SQLite)
+           const expiredTrades = await db.prepare("SELECT * FROM p2p_trades WHERE status = 'open' AND created_at < ?").bind(thirtyMinutesAgo).all() as any;
+           for (const trade of expiredTrades.results || []) {
+              await db.prepare("UPDATE users SET real_balance = real_balance + ? WHERE id = ?").bind(trade.amount, trade.seller_id).run();
+              await db.prepare("UPDATE p2p_trades SET status = 'cancelled' WHERE id = ?").bind(trade.id).run();
+              await db.prepare("UPDATE p2p_orders SET status = 'open' WHERE id = ?").bind(trade.order_id).run();
+           }
         } else {
-           await db.query("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND created_at < $1", [thirtyMinutesAgo]);
+           await db.query("UPDATE p2p_orders SET status = 'cancelled' WHERE status != 'paid' AND status != 'completed' AND status != 'cancelled' AND status != 'trading' AND created_at < $1", [thirtyMinutesAgo]);
+           
+           // Expired trades auto-cancellation (PostgreSQL)
+           const expiredTradesRes = await db.query("SELECT * FROM p2p_trades WHERE status = 'open' AND created_at < $1", [thirtyMinutesAgo]);
+           for (const trade of expiredTradesRes.rows || []) {
+              await db.query("UPDATE users SET real_balance = real_balance + $1 WHERE id = $2", [trade.amount, trade.seller_id]);
+              await db.query("UPDATE p2p_trades SET status = 'cancelled' WHERE id = $1", [trade.id]);
+              await db.query("UPDATE p2p_orders SET status = 'open' WHERE id = $1", [trade.order_id]);
+           }
         }
     } catch (e) {
         console.error('Error running P2P auto-cancellation:', e);
@@ -827,6 +869,44 @@ async function startServer() {
      }
   } catch (e) {
      // Likely already exists
+  }
+
+  // Ensure p2p_trades table exists in any running SQLite/Postgres DB
+  try {
+     const db = getD1Database();
+     if (db.prepare) {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS p2p_trades (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            buyer_id TEXT NOT NULL,
+            seller_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            price REAL NOT NULL,
+            coin TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            chat_messages TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL
+          )
+        `).run();
+     } else {
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS p2p_trades (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            buyer_id TEXT NOT NULL,
+            seller_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            price REAL NOT NULL,
+            coin TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            chat_messages TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL
+          )
+        `);
+     }
+  } catch (e) {
+     console.error('Error auto-bootstrapping p2p_trades table:', e);
   }
 
   // NOWPayments Config from environment
@@ -2318,6 +2398,374 @@ Active technical indicator values: ${indicatorsString}.`}`;
     const db = getD1Database();
     await db.prepare("UPDATE p2p_orders SET status = 'completed' WHERE id = ?").bind(req.params.id).run();
     return res.json({ success: true });
+  });
+
+  // P2P Trades Escrow and Live Chat endpoints
+  app.get('/api/p2p/trades', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      if (db.prepare) {
+        const trades = await db.prepare("SELECT * FROM p2p_trades WHERE buyer_id = ? OR seller_id = ? ORDER BY created_at DESC").bind(userId, userId).all();
+        return res.json({ success: true, trades: trades.results || [] });
+      } else {
+        const trades = await db.query("SELECT * FROM p2p_trades WHERE buyer_id = $1 OR seller_id = $2 ORDER BY created_at DESC", [userId, userId]);
+        return res.json({ success: true, trades: trades.rows || [] });
+      }
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.get('/api/p2p/trades/:id', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      
+      if (trade.buyer_id !== userId && trade.seller_id !== userId) {
+        return res.status(403).json({ success: false, message: 'Unauthorized' });
+      }
+      
+      let buyerEmail = 'Buyer';
+      let sellerEmail = 'Seller';
+      if (db.prepare) {
+        const b = await db.prepare("SELECT email FROM users WHERE id = ?").bind(trade.buyer_id).first() as any;
+        const s = await db.prepare("SELECT email FROM users WHERE id = ?").bind(trade.seller_id).first() as any;
+        if (b) buyerEmail = b.email;
+        if (s) sellerEmail = s.email;
+      } else {
+        const b = await db.query("SELECT email FROM users WHERE id = $1", [trade.buyer_id]);
+        const s = await db.query("SELECT email FROM users WHERE id = $1", [trade.seller_id]);
+        if (b.rows[0]) buyerEmail = b.rows[0].email;
+        if (s.rows[0]) sellerEmail = s.rows[0].email;
+      }
+      
+      return res.json({ success: true, trade, buyerEmail, sellerEmail });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    const { orderId, amount } = req.body;
+    
+    const db = getD1Database();
+    try {
+      let order: any = null;
+      if (db.prepare) {
+        order = await db.prepare("SELECT * FROM p2p_orders WHERE id = ?").bind(orderId).first();
+      } else {
+        const resOrder = await db.query("SELECT * FROM p2p_orders WHERE id = $1", [orderId]);
+        order = resOrder.rows[0];
+      }
+      
+      if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+      if (order.status !== 'open') return res.status(400).json({ success: false, message: 'Order is no longer open' });
+      if (order.user_id === userId) return res.status(400).json({ success: false, message: 'You cannot initiate a trade with yourself' });
+      
+      const tradeAmount = Number(amount) || order.amount;
+      const tradePrice = order.price;
+      const coin = order.coin;
+      
+      let buyer_id = '';
+      let seller_id = '';
+      
+      if (order.type === 'sell') {
+        seller_id = order.user_id;
+        buyer_id = userId;
+      } else {
+        seller_id = userId;
+        buyer_id = order.user_id;
+      }
+      
+      let seller: any = null;
+      if (db.prepare) {
+        seller = await db.prepare("SELECT real_balance FROM users WHERE id = ?").bind(seller_id).first();
+      } else {
+        const resSeller = await db.query("SELECT real_balance FROM users WHERE id = $1", [seller_id]);
+        seller = resSeller.rows[0];
+      }
+      
+      if (!seller) return res.status(404).json({ success: false, message: 'Seller account not found' });
+      if (seller.real_balance < tradeAmount) {
+        return res.status(400).json({ success: false, message: 'Insufficient seller crypto balance for escrow hold' });
+      }
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE users SET real_balance = real_balance - ? WHERE id = ?").bind(tradeAmount, seller_id).run();
+        await db.prepare("UPDATE p2p_orders SET status = 'trading' WHERE id = ?").bind(orderId).run();
+      } else {
+        await db.query("UPDATE users SET real_balance = real_balance - $1 WHERE id = $2", [tradeAmount, seller_id]);
+        await db.query("UPDATE p2p_orders SET status = 'trading' WHERE id = $1", [orderId]);
+      }
+      
+      const tradeId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const initialMessage = JSON.stringify([
+        {
+          id: crypto.randomUUID(),
+          sender: 'system',
+          text: `Trade initiated. Seller's ${tradeAmount} ${coin} is held securely in Paxful-style escrow. Buyer, please send payment of $${(tradeAmount * tradePrice).toFixed(2)} USD via ${order.paymentMethod || 'Bank Transfer'}. Then, click 'Mark as Paid'.`,
+          timestamp: now
+        }
+      ]);
+      
+      if (db.prepare) {
+        await db.prepare("INSERT INTO p2p_trades (id, order_id, buyer_id, seller_id, amount, price, coin, status, chat_messages, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)")
+          .bind(tradeId, orderId, buyer_id, seller_id, tradeAmount, tradePrice, coin, initialMessage, now)
+          .run();
+      } else {
+        await db.query("INSERT INTO p2p_trades (id, order_id, buyer_id, seller_id, amount, price, coin, status, chat_messages, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9)",
+          [tradeId, orderId, buyer_id, seller_id, tradeAmount, tradePrice, coin, initialMessage, now]);
+      }
+      
+      return res.json({ success: true, tradeId });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades/:id/mark-paid', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      if (trade.buyer_id !== userId) return res.status(403).json({ success: false, message: 'Only buyer can mark trade as paid' });
+      if (trade.status !== 'open') return res.status(400).json({ success: false, message: 'Trade is not open' });
+      
+      const now = new Date().toISOString();
+      const messages = JSON.parse(trade.chat_messages || '[]');
+      messages.push({
+        id: crypto.randomUUID(),
+        sender: 'system',
+        text: 'System: Buyer has marked this trade as PAID. Seller, please check your payment details and release the escrow.',
+        timestamp: now
+      });
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE p2p_trades SET status = 'paid', chat_messages = ? WHERE id = ?").bind(JSON.stringify(messages), req.params.id).run();
+      } else {
+        await db.query("UPDATE p2p_trades SET status = 'paid', chat_messages = $1 WHERE id = $2", [JSON.stringify(messages), req.params.id]);
+      }
+      
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades/:id/release', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      if (trade.seller_id !== userId) return res.status(403).json({ success: false, message: 'Only seller can release the escrow' });
+      if (trade.status !== 'open' && trade.status !== 'paid') return res.status(400).json({ success: false, message: 'Trade is not in an active/paid state' });
+      
+      const now = new Date().toISOString();
+      const messages = JSON.parse(trade.chat_messages || '[]');
+      messages.push({
+        id: crypto.randomUUID(),
+        sender: 'system',
+        text: 'System: Seller has released escrow. The cryptocurrency has been successfully delivered to the buyer.',
+        timestamp: now
+      });
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE users SET real_balance = real_balance + ? WHERE id = ?").bind(trade.amount, trade.buyer_id).run();
+        await db.prepare("UPDATE p2p_trades SET status = 'completed', chat_messages = ? WHERE id = ?").bind(JSON.stringify(messages), req.params.id).run();
+        await db.prepare("UPDATE p2p_orders SET status = 'completed' WHERE id = ?").bind(trade.order_id).run();
+      } else {
+        await db.query("UPDATE users SET real_balance = real_balance + $1 WHERE id = $2", [trade.amount, trade.buyer_id]);
+        await db.query("UPDATE p2p_trades SET status = 'completed', chat_messages = $1 WHERE id = $2", [JSON.stringify(messages), req.params.id]);
+        await db.query("UPDATE p2p_orders SET status = 'completed' WHERE id = $1", [trade.order_id]);
+      }
+      
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades/:id/cancel', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      const isBuyer = trade.buyer_id === userId;
+      const isSeller = trade.seller_id === userId;
+      
+      if (!isBuyer && !isSeller) return res.status(403).json({ success: false, message: 'Unauthorized' });
+      if (trade.status !== 'open' && trade.status !== 'paid') return res.status(400).json({ success: false, message: 'Cannot cancel an inactive trade' });
+      
+      if (isSeller && trade.status === 'paid') {
+        return res.status(400).json({ success: false, message: 'Seller cannot cancel once buyer has marked as paid. Please dispute if there is an issue.' });
+      }
+      
+      const now = new Date().toISOString();
+      const messages = JSON.parse(trade.chat_messages || '[]');
+      messages.push({
+        id: crypto.randomUUID(),
+        sender: 'system',
+        text: `System: Trade cancelled by ${isBuyer ? 'Buyer' : 'Seller'}. Crypto escrow has been refunded to the seller.`,
+        timestamp: now
+      });
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE users SET real_balance = real_balance + ? WHERE id = ?").bind(trade.amount, trade.seller_id).run();
+        await db.prepare("UPDATE p2p_trades SET status = 'cancelled', chat_messages = ? WHERE id = ?").bind(JSON.stringify(messages), req.params.id).run();
+        await db.prepare("UPDATE p2p_orders SET status = 'open' WHERE id = ?").bind(trade.order_id).run();
+      } else {
+        await db.query("UPDATE users SET real_balance = real_balance + $1 WHERE id = $2", [trade.amount, trade.seller_id]);
+        await db.query("UPDATE p2p_trades SET status = 'cancelled', chat_messages = $1 WHERE id = $2", [JSON.stringify(messages), req.params.id]);
+        await db.query("UPDATE p2p_orders SET status = 'open' WHERE id = $1", [trade.order_id]);
+      }
+      
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades/:id/dispute', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      if (trade.buyer_id !== userId && trade.seller_id !== userId) return res.status(403).json({ success: false, message: 'Unauthorized' });
+      if (trade.status !== 'paid') return res.status(400).json({ success: false, message: 'Can only dispute a paid trade' });
+      
+      const now = new Date().toISOString();
+      const messages = JSON.parse(trade.chat_messages || '[]');
+      messages.push({
+        id: crypto.randomUUID(),
+        sender: 'system',
+        text: 'System: A trade dispute has been opened. Please provide transaction receipts or screenshot proofs here in the chat. A support agent will review shortly.',
+        timestamp: now
+      });
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE p2p_trades SET status = 'disputed', chat_messages = ? WHERE id = ?").bind(JSON.stringify(messages), req.params.id).run();
+      } else {
+        await db.query("UPDATE p2p_trades SET status = 'disputed', chat_messages = $1 WHERE id = $2", [JSON.stringify(messages), req.params.id]);
+      }
+      
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post('/api/p2p/trades/:id/chat', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    const { text } = req.body;
+    
+    const db = getD1Database();
+    try {
+      let trade: any = null;
+      if (db.prepare) {
+        trade = await db.prepare("SELECT * FROM p2p_trades WHERE id = ?").bind(req.params.id).first();
+      } else {
+        const resTrade = await db.query("SELECT * FROM p2p_trades WHERE id = $1", [req.params.id]);
+        trade = resTrade.rows[0];
+      }
+      
+      if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+      if (trade.buyer_id !== userId && trade.seller_id !== userId) return res.status(403).json({ success: false, message: 'Unauthorized' });
+      
+      let senderEmail = 'User';
+      if (db.prepare) {
+        const u = await db.prepare("SELECT email FROM users WHERE id = ?").bind(userId).first() as any;
+        if (u) senderEmail = u.email;
+      } else {
+        const u = await db.query("SELECT email FROM users WHERE id = $1", [userId]);
+        if (u.rows[0]) senderEmail = u.rows[0].email;
+      }
+      
+      const now = new Date().toISOString();
+      const messages = JSON.parse(trade.chat_messages || '[]');
+      messages.push({
+        id: crypto.randomUUID(),
+        sender: userId,
+        senderEmail,
+        text,
+        timestamp: now
+      });
+      
+      if (db.prepare) {
+        await db.prepare("UPDATE p2p_trades SET chat_messages = ? WHERE id = ?").bind(JSON.stringify(messages), req.params.id).run();
+      } else {
+        await db.query("UPDATE p2p_trades SET chat_messages = $1 WHERE id = $2", [JSON.stringify(messages), req.params.id]);
+      }
+      
+      return res.json({ success: true, messages });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e.message });
+    }
   });
 
   // Update user balance from trading events
