@@ -2279,6 +2279,18 @@ Active technical indicator values: ${indicatorsString}.`}`;
     return res.json({ success: true, orders: orders.results });
   });
 
+  app.get('/api/p2p/balance', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    const user = await db.prepare('SELECT real_balance FROM users WHERE id = ?').bind(userId).first() as any;
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    return res.json({ success: true, balance: user.real_balance });
+  });
+
   app.post('/api/p2p/orders', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });

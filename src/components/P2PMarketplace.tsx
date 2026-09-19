@@ -26,9 +26,13 @@ export default function P2PMarketplace({ currentUser, isDark }: P2PMarketplacePr
   const [newOrder, setNewOrder] = useState({ type: 'buy', coin: 'USDT', amount: '', price: '', paymentMethod: 'Bank Transfer' });
   const [selectedOrder, setSelectedOrder] = useState<P2POrder | null>(null);
   const [onlyHighTrust, setOnlyHighTrust] = useState(false);
+  const [filterType, setFilterType] = useState<'all' | 'buy' | 'sell'>('all');
 
   // ...
-  const filteredOrders = orders.filter(o => !onlyHighTrust || o.sellerTrustScore >= 95);
+  const filteredOrders = orders.filter(o => 
+    (!onlyHighTrust || o.sellerTrustScore >= 95) &&
+    (filterType === 'all' || o.type === filterType)
+  );
 
   const fetchOrders = async () => {
     // Mocked data enhancement for demo purpose
@@ -48,6 +52,18 @@ export default function P2PMarketplace({ currentUser, isDark }: P2PMarketplacePr
   const createOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+    
+    if (newOrder.type === 'sell') {
+        const response = await fetch('/api/p2p/balance', {
+            headers: { 'Authorization': `Bearer ${currentUser.id}` }
+        });
+        const data = await response.json();
+        if (data.success && data.balance < Number(newOrder.amount)) {
+            alert('Insufficient balance to sell this amount.');
+            return;
+        }
+    }
+    
     const response = await fetch('/api/p2p/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser.id}` },
@@ -73,15 +89,24 @@ export default function P2PMarketplace({ currentUser, isDark }: P2PMarketplacePr
 
   return (
     <div className={`rounded-lg border ${isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-gray-200'} overflow-hidden`}>
-      <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
-        <h2 className="text-sm font-bold">P2P Trading</h2>
-        <div className="flex gap-2">
-            <label className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer">
-              <input type="checkbox" checked={onlyHighTrust} onChange={(e) => setOnlyHighTrust(e.target.checked)} />
-              High Trust (95%+)
-            </label>
-            <button onClick={() => setShowCreateForm(!showCreateForm)} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded">Post Order</button>
-            <button onClick={fetchOrders} className="text-zinc-400 hover:text-white"><RefreshCw className="h-4 w-4" /></button>
+      <div className="p-4 border-b border-zinc-800 flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <h2 className="text-sm font-bold">P2P Trading</h2>
+          <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-xs text-zinc-400 cursor-pointer">
+                <input type="checkbox" checked={onlyHighTrust} onChange={(e) => setOnlyHighTrust(e.target.checked)} />
+                High Trust (95%+)
+              </label>
+              <button onClick={() => setShowCreateForm(!showCreateForm)} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded">Post Order</button>
+              <button onClick={fetchOrders} className="text-zinc-400 hover:text-white"><RefreshCw className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="flex gap-2 border-b border-zinc-800">
+          {(['all', 'buy', 'sell'] as const).map(tab => (
+              <button key={tab} onClick={() => setFilterType(tab)} className={`text-xs px-3 py-1 ${filterType === tab ? 'text-white border-b-2 border-indigo-500' : 'text-zinc-500'}`}>
+                  {tab.toUpperCase()}
+              </button>
+          ))}
         </div>
       </div>
       
