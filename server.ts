@@ -8,6 +8,8 @@ import fs from 'fs/promises';
 import multer from 'multer';
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import { authenticator } from '@otplib/preset-default';
+import QRCode from 'qrcode';
 
 dotenv.config({ path: ['.env.local', '.env', '.env.example'] });
 
@@ -41,6 +43,17 @@ function getSqliteInstance() {
 
     // Bootstrap migrations to simulate D1 Database schema
     rawDb.exec(`
+      CREATE TABLE IF NOT EXISTS p2p_orders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        coin TEXT NOT NULL,
+        amount REAL NOT NULL,
+        price REAL NOT NULL,
+        status TEXT DEFAULT 'open',
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -315,6 +328,17 @@ function getD1Database() {
       try {
         client = await pgPoolInstance!.connect();
         await client.query(`
+          CREATE TABLE IF NOT EXISTS p2p_orders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            coin TEXT NOT NULL,
+            amount REAL NOT NULL,
+            price REAL NOT NULL,
+            status TEXT DEFAULT 'open',
+            created_at TEXT NOT NULL
+          );
+
           CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             email TEXT UNIQUE NOT NULL,
@@ -2141,6 +2165,120 @@ Active technical indicator values: ${indicatorsString}.`}`;
       .run();
       
     return res.json({ success: true, message: 'Password reset successful.' });
+  });
+
+  // Security endpoints
+  app.post('/api/user/security/anti-phishing', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    const { antiPhishingCode } = req.body;
+    
+    const db = getD1Database();
+    await db.prepare('UPDATE user_profiles SET anti_phishing_code = ? WHERE user_id = ?')
+      .bind(antiPhishingCode, userId)
+      .run();
+    
+    return res.json({ success: true });
+  });
+
+  app.post('/api/user/security/2fa/generate', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const secret = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(userId, 'LWEX', secret);
+    const qrCode = await QRCode.toDataURL(otpauth);
+    
+    const db = getD1Database();
+    await db.prepare('UPDATE user_profiles SET totp_secret = ? WHERE user_id = ?')
+      .bind(secret, userId)
+      .run();
+      
+    return res.json({ success: true, qrCode, secret });
+  });
+
+  app.post('/api/user/security/2fa/verify', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    const { otp } = req.body;
+    
+    const db = getD1Database();
+    const profile = await db.prepare('SELECT totp_secret FROM user_profiles WHERE user_id = ?').bind(userId).first() as any;
+    
+    if (!profile || !profile.totp_secret) return res.status(400).json({ success: false, message: '2FA not initialized.' });
+    
+    const isValid = authenticator.check(otp, profile.totp_secret);
+    
+    if (isValid) {
+      await db.prepare('UPDATE user_profiles SET two_factor_enabled = 1 WHERE user_id = ?').bind(userId).run();
+      return res.json({ success: true });
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+    }
+  });
+
+  // Finance endpoints
+  app.post('/api/finance/deposit', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    const profile = await db.prepare('SELECT verification_status FROM user_profiles WHERE user_id = ?').bind(userId).first() as any;
+    if (!profile || profile.verification_status !== 'verified') return res.status(403).json({ success: false, message: 'KYC verification required' });
+    
+    return res.json({ success: true, message: 'Deposit initiated' });
+  });
+
+  app.post('/api/finance/withdraw', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    
+    const db = getD1Database();
+    const profile = await db.prepare('SELECT two_factor_enabled FROM user_profiles WHERE user_id = ?').bind(userId).first() as any;
+    if (!profile || !profile.two_factor_enabled) return res.status(403).json({ success: false, message: '2FA required for withdrawals' });
+    
+    return res.json({ success: true, message: 'Withdrawal initiated' });
+  });
+
+  // P2P Marketplace endpoints
+  app.get('/api/p2p/orders', async (req, res) => {
+    const db = getD1Database();
+    const orders = await db.prepare('SELECT * FROM p2p_orders WHERE status = "open"').all();
+    return res.json({ success: true, orders: orders.results });
+  });
+
+  app.post('/api/p2p/orders', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userId = authHeader.split(' ')[1];
+    const { type, coin, amount, price } = req.body;
+    
+    const db = getD1Database();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    
+    await db.prepare('INSERT INTO p2p_orders (id, user_id, type, coin, amount, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, userId, type, coin, amount, price, now)
+      .run();
+    
+    return res.json({ success: true, orderId: id });
+  });
+
+  app.post('/api/p2p/orders/:id/mark-paid', async (req, res) => {
+    const db = getD1Database();
+    await db.prepare('UPDATE p2p_orders SET status = "paid" WHERE id = ?').bind(req.params.id).run();
+    return res.json({ success: true });
+  });
+
+  app.post('/api/p2p/orders/:id/release', async (req, res) => {
+    const db = getD1Database();
+    await db.prepare('UPDATE p2p_orders SET status = "completed" WHERE id = ?').bind(req.params.id).run();
+    return res.json({ success: true });
   });
 
   // Update user balance from trading events

@@ -8,6 +8,8 @@ import GuideModal from './components/GuideModal';
 import SettingsModal from './components/SettingsModal';
 import InviteModal from './components/InviteModal';
 import AdminDashboard from './components/AdminDashboard';
+import FinanceDashboard from './components/FinanceDashboard';
+import P2PMarketplace from './components/P2PMarketplace';
 import AuthModal from './components/AuthModal';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
 import PriceAlertsManager from './components/PriceAlertsManager';
@@ -230,7 +232,7 @@ export default function App() {
 
 
   // Layout states
-  const [activeTabView, setActiveTabView] = useState<'trade' | 'history' | 'stats'>('trade');
+  const [activeTabView, setActiveTabView] = useState<'trade' | 'history' | 'stats' | 'finance' | 'p2p'>('trade');
   const [positionsTab, setPositionsTab] = useState<'positions' | 'statements' | 'stats'>('positions');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
@@ -2550,7 +2552,7 @@ export default function App() {
     triggerToast(`Contract liquidated early for $${refund.toFixed(2)} refund.`, true);
   };
 
-  const handleSwitchView = (view: 'trade' | 'history' | 'stats') => {
+  const handleSwitchView = (view: 'trade' | 'history' | 'stats' | 'finance' | 'p2p') => {
     setActiveTabView(view);
     if (view === 'history') setPositionsTab('statements');
     else if (view === 'stats') setPositionsTab('stats');
@@ -2894,6 +2896,32 @@ export default function App() {
           >
             <PieChart className="w-4 h-4 shrink-0" />
             {!desktopSidebarCollapsed && <span>Asset Allocations</span>}
+          </button>
+
+          <button 
+            onClick={() => { handleSwitchView('finance'); setSidebarOpen(false); }}
+            className={`flex items-center ${desktopSidebarCollapsed ? 'lg:justify-center p-2.5' : 'space-x-3 px-3.5 py-2.5'} w-full rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTabView === 'finance'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-md' 
+                : 'text-slate-450 hover:bg-slate-900/50 hover:text-white'
+            }`}
+            title={desktopSidebarCollapsed ? "Finance" : undefined}
+          >
+            <Wallet className="w-4 h-4 shrink-0" />
+            {!desktopSidebarCollapsed && <span>Finance</span>}
+          </button>
+
+          <button 
+            onClick={() => { handleSwitchView('p2p'); setSidebarOpen(false); }}
+            className={`flex items-center ${desktopSidebarCollapsed ? 'lg:justify-center p-2.5' : 'space-x-3 px-3.5 py-2.5'} w-full rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTabView === 'p2p'
+                ? 'bg-indigo-600 text-white font-black shadow-md' 
+                : 'text-slate-450 hover:bg-slate-900/50 hover:text-white'
+            }`}
+            title={desktopSidebarCollapsed ? "P2P Marketplace" : undefined}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            {!desktopSidebarCollapsed && <span>P2P Marketplace</span>}
           </button>
 
           <button 
@@ -3660,24 +3688,34 @@ export default function App() {
 
                 {/* Central Chart Rendering Area */}
                 <div className="flex-1 flex flex-col min-w-0">
-                  <Chart 
-                    theme={theme}
-                    asset={activeAsset}
-                    ticks={activeTicks}
-                    activeContracts={activeContracts}
-                    indicatorConfig={indicatorConfig}
-                    chartType={chartType}
-                    onToggleChartType={(newType) => setChartType(newType)}
-                    onToggleIndicator={handleToggleIndicator}
-                    onUpdateContract={(id, updates) => {
-                      setActiveContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-                      const action = updates.stopLossPrice ? 'Stop Loss' : 'Take Profit';
-                      triggerToast(`${action} marker updated interactively.`, true);
-                    }}
-                    onPriceClick={(price) => {
-                      setQuickOrderPrompt({ price });
-                    }}
-                  />
+                  {activeTabView === 'trade' && (
+                    <Chart 
+                      theme={theme}
+                      asset={activeAsset}
+                      ticks={activeTicks}
+                      activeContracts={activeContracts}
+                      indicatorConfig={indicatorConfig}
+                      chartType={chartType}
+                      onToggleChartType={(newType) => setChartType(newType)}
+                      onToggleIndicator={handleToggleIndicator}
+                      onUpdateContract={(id, updates) => {
+                        setActiveContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+                        const action = updates.stopLossPrice ? 'Stop Loss' : 'Take Profit';
+                        triggerToast(`${action} marker updated interactively.`, true);
+                      }}
+                      onPriceClick={(price) => {
+                        setQuickOrderPrompt({ price });
+                      }}
+                    />
+                  )}
+                  {activeTabView === 'finance' && (
+                    <FinanceDashboard currentUser={currentUser} isDark={theme === 'dark'} />
+                  )}
+                  {activeTabView === 'p2p' && (
+                    <div className="p-6">
+                      <P2PMarketplace currentUser={currentUser} isDark={theme === 'dark'} />
+                    </div>
+                  )}
                 </div>
               </div>
 

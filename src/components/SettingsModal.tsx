@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, User, Settings as SettingsIcon, Shield, CreditCard, LogOut, Clock, Globe, Phone as PhoneIcon, Edit2, Check, Mail, Lock, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Account } from '../types';
+import SecuritySettings from './SecuritySettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -196,6 +197,7 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
           <div className="flex space-x-2 border-b border-zinc-800 pb-2">
             <button onClick={() => setActiveSettingsTab('profile')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'profile' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Profile</button>
             <button onClick={() => setActiveSettingsTab('notifications')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'notifications' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Notifications</button>
+            <button onClick={() => setActiveSettingsTab('security')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'security' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Security</button>
             {isAdmin && <button onClick={() => setActiveSettingsTab('admin')} className={`text-xs font-bold px-3 py-1 rounded ${activeSettingsTab === 'admin' ? 'bg-indigo-600 text-white' : 'text-zinc-500'}`}>Admin</button>}
           </div>
 
@@ -222,6 +224,8 @@ export default function SettingsModal({ isOpen, onClose, account, theme, current
                 </select>
               </div>
             </div>
+          ) : activeSettingsTab === 'security' ? (
+            <SecuritySettings currentUser={currentUser} isDark={isDark} onUpdateUser={onUpdateUser!} />
           ) : activeSettingsTab === 'admin' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
